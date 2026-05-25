@@ -1,0 +1,20 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local publish output
+artifacts/
+dist/
+
+# Never commit user secrets or copied Codex state
+*.key
+*.secret
+secrets.json
+settings.json
+auth.json
+config.toml
+*.bak-codex-profile-tray-*
