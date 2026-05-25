@@ -358,7 +358,7 @@ internal sealed class ProfileManagerForm : Form
         _presetBox.SelectedIndex = 0;
         _isLoading = false;
         ApplySelectedPreset();
-        _statusLabel.Text = "Enter any provider that exposes an OpenAI-compatible API URL.";
+        _statusLabel.Text = "Choose a preset, paste an API key, then fetch models. Use Custom for providers not listed.";
     }
 
     private void ApplySelectedPreset()
@@ -374,6 +374,8 @@ internal sealed class ProfileManagerForm : Form
         _baseUrlBox.Text = preset.BaseUrl;
         _apiKeyBox.Text = string.Empty;
         _modelsBox.Text = string.Join(Environment.NewLine, preset.Models);
+        _baseUrlBox.ReadOnly = !preset.IsCustom;
+        _baseUrlBox.BackColor = preset.IsCustom ? Color.White : Color.FromArgb(241, 245, 249);
         _contextEnabledBox.Checked = preset.ContextWindow.HasValue;
         _contextWindowBox.Enabled = preset.ContextWindow.HasValue;
         _contextWindowBox.Value = Math.Clamp(preset.ContextWindow ?? 1_000_000, 1, 100_000_000);
@@ -384,7 +386,7 @@ internal sealed class ProfileManagerForm : Form
             : WindowsCredentialStore.HasSecret(preset.ProviderId)
                 ? "A key is already saved for this provider."
                 : "Paste your API key once. It will be saved in Windows Credential Manager.";
-        _statusLabel.Text = "Type model ids manually or fetch them from the provider's /models endpoint.";
+        _statusLabel.Text = "Paste an API key, then click Fetch to load model ids from this provider.";
     }
 
     private void LoadSelectedProfile()
@@ -406,6 +408,8 @@ internal sealed class ProfileManagerForm : Form
         _loadedEnvKey = profile.EnvKey;
         _providerNameBox.Text = profile.ProviderName ?? profile.ProviderId;
         _baseUrlBox.Text = profile.BaseUrl ?? string.Empty;
+        _baseUrlBox.ReadOnly = !preset.IsCustom;
+        _baseUrlBox.BackColor = preset.IsCustom ? Color.White : Color.FromArgb(241, 245, 249);
         _apiKeyBox.Text = string.Empty;
 
         var providerProfiles = _profiles
@@ -472,6 +476,12 @@ internal sealed class ProfileManagerForm : Form
             var key = string.IsNullOrWhiteSpace(_apiKeyBox.Text)
                 ? WindowsCredentialStore.ReadSecret(providerId)
                 : _apiKeyBox.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                MessageBox.Show("Paste an API key first, then click Fetch.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
 
             var models = await ModelFetcher.FetchAsync(_baseUrlBox.Text.Trim(), key, CancellationToken.None);
             _modelsBox.Text = string.Join(Environment.NewLine, models);

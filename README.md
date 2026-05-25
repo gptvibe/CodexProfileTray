@@ -27,18 +27,34 @@ Windows may show a SmartScreen warning because this is an unsigned open-source a
 
 1. Right-click the tray icon.
 2. Click **Manage Providers...**.
-3. Enter a display name, for example `My AI Provider`.
-4. Enter the provider's OpenAI-compatible base URL, for example:
+3. Pick a provider from the dropdown.
+4. Paste your API key.
+5. Click **Fetch** to load model IDs from that provider.
+6. Keep the model IDs you want, one per line.
+7. Click **Save**.
+
+For the built-in provider presets, the base URL is filled in automatically. You only need to paste the API key and fetch models.
+
+Use **Custom OpenAI-compatible API** only when the provider is not in the dropdown. In that case, enter the provider's base URL, for example:
 
 ```text
 https://api.example.com/v1
 ```
 
-5. Paste your API key if the provider needs one.
-6. Enter one model ID per line, or click **Fetch**.
-7. Click **Save**.
-
 The app writes a Codex profile for each model ID. That lets Codex launch with the provider/model combination you choose from the tray.
+
+## Included Presets
+
+- OpenAI API
+- OpenRouter
+- DeepSeek
+- Groq
+- Together AI
+- xAI
+- Perplexity
+- Cerebras
+- Fireworks AI
+- Custom OpenAI-compatible API
 
 ## Open Codex
 
@@ -57,6 +73,8 @@ The **Fetch** button calls:
 ```text
 GET <base_url>/models
 ```
+
+The app asks for an API key before fetching. If you already saved a key for that provider, the saved key can be used.
 
 If fetching fails, it does not always mean the provider cannot work. Some providers disable model listing, require a different URL prefix, or need account permissions. In that case, type the model ID manually.
 
