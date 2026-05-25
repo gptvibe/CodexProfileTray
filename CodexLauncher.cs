@@ -19,6 +19,11 @@ internal sealed class CodexLauncher
             throw new InvalidOperationException("Choose an existing project folder first.");
         }
 
+        _configManager.EnsureProviderCompatibility(profile);
+        profile = _configManager.LoadProfiles()
+            .FirstOrDefault(item => item.ProfileName.Equals(profile.ProfileName, StringComparison.OrdinalIgnoreCase))
+            ?? profile;
+
         _configManager.SetActiveProfile(profile);
         RestartCodexIfNeeded(profile);
 

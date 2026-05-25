@@ -601,6 +601,8 @@ internal sealed class ProfileManagerForm : Form
             BaseUrl = baseUrl,
             EnvKey = envKey,
             Model = model,
+            UseProxy = ProviderProxyServer.ShouldProxyProvider(providerId),
+            KnownModels = GetModelChoices().Append(model).ToArray(),
             ContextWindow = _contextEnabledBox.Checked ? (int)_contextWindowBox.Value : null,
             ReasoningEffort = reasoningEffort,
             SupportsReasoningSummaries = ResolveReasoningSummaries(preset)
@@ -644,6 +646,17 @@ internal sealed class ProfileManagerForm : Form
         else
         {
             _modelBox.Text = string.Empty;
+        }
+    }
+
+    private IEnumerable<string> GetModelChoices()
+    {
+        foreach (var item in _modelBox.Items)
+        {
+            if (!string.IsNullOrWhiteSpace(item?.ToString()))
+            {
+                yield return item.ToString()!;
+            }
         }
     }
 

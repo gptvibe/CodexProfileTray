@@ -12,8 +12,14 @@ internal sealed class ProviderPreset
     public string? ReasoningEffort { get; init; }
     public bool? SupportsReasoningSummaries { get; init; }
     public bool IsCustom { get; init; }
+    public bool UseProxy { get; init; } = true;
 
     public override string ToString() => DisplayName;
+
+    public static ProviderPreset? Find(string providerId)
+    {
+        return All.FirstOrDefault(preset => preset.ProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase));
+    }
 
     public static IReadOnlyList<ProviderPreset> All { get; } = new[]
     {
@@ -23,7 +29,8 @@ internal sealed class ProviderPreset
             ProviderId = "openai-api",
             ProviderName = "OpenAI API",
             BaseUrl = "https://api.openai.com/v1",
-            EnvKey = "OPENAI_API_KEY"
+            EnvKey = "OPENAI_API_KEY",
+            UseProxy = false
         },
         new ProviderPreset
         {

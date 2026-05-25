@@ -2,16 +2,30 @@ namespace CodexProfileTray;
 
 internal sealed class TrayAppContext : ApplicationContext
 {
-    private readonly CodexConfigManager _configManager = new();
+    private readonly ProviderSettingsStore _providerSettingsStore = new();
+    private readonly CodexConfigManager _configManager;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _openMenu = new("Open Codex With Profile");
     private readonly CodexLauncher _launcher;
+    private readonly ProviderProxyServer _proxyServer;
     private readonly Icon _appIcon;
+    private string? _proxyStartError;
 
     public TrayAppContext()
     {
+        _configManager = new CodexConfigManager(_providerSettingsStore);
         _launcher = new CodexLauncher(_configManager);
+        _proxyServer = new ProviderProxyServer(_providerSettingsStore);
+        try
+        {
+            _proxyServer.Start();
+        }
+        catch (Exception ex)
+        {
+            _proxyStartError = ex.Message;
+        }
+
         _appIcon = AppIcons.GetAppIcon();
         _notifyIcon = new NotifyIcon
         {
@@ -30,6 +44,7 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _proxyServer.Dispose();
             _appIcon.Dispose();
         }
 
@@ -127,6 +142,11 @@ internal sealed class TrayAppContext : ApplicationContext
             if (string.IsNullOrWhiteSpace(_settings.LastWorkspace))
             {
                 return;
+            }
+
+            if (ProviderProxyServer.ShouldProxyProvider(profile.ProviderId) && !_proxyServer.IsRunning)
+            {
+                throw new InvalidOperationException($"The local compatibility proxy is not running. {_proxyStartError ?? "Exit and reopen Codex Profile Tray, then try again."}");
             }
 
             _launcher.Launch(profile, _settings.LastWorkspace);

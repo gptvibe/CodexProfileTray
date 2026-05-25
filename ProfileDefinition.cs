@@ -8,6 +8,8 @@ internal sealed class ProfileDefinition
     public required string BaseUrl { get; init; }
     public required string EnvKey { get; init; }
     public required string Model { get; init; }
+    public bool UseProxy { get; init; }
+    public IReadOnlyList<string> KnownModels { get; init; } = Array.Empty<string>();
     public string? ReasoningEffort { get; init; }
     public int? ContextWindow { get; init; }
     public bool? SupportsReasoningSummaries { get; init; }

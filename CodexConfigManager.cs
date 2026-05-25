@@ -8,12 +8,14 @@ internal sealed class CodexConfigManager
 {
     private static readonly Regex SectionRegex = new(@"^\s*\[(?<section>[^\]]+)\]\s*$", RegexOptions.Compiled);
     private static readonly Regex KeyValueRegex = new(@"^\s*(?<key>[A-Za-z0-9_\-]+)\s*=\s*(?<value>.+?)\s*$", RegexOptions.Compiled);
+    private readonly ProviderSettingsStore _providerSettingsStore;
 
     public string CodexHome { get; }
     public string ConfigPath { get; }
 
-    public CodexConfigManager()
+    public CodexConfigManager(ProviderSettingsStore? providerSettingsStore = null)
     {
+        _providerSettingsStore = providerSettingsStore ?? new ProviderSettingsStore();
         var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
         if (string.IsNullOrWhiteSpace(codexHome))
         {
@@ -48,13 +50,19 @@ internal sealed class CodexConfigManager
             var values = pair.Value;
             var providerId = Get(values, "model_provider") ?? "openai";
             providers.TryGetValue(providerId, out var provider);
+            var providerBaseUrl = Get(provider, "base_url");
+            if (ProviderProxyServer.TryGetProviderId(providerBaseUrl, out _) &&
+                _providerSettingsStore.Get(providerId) is { } settings)
+            {
+                providerBaseUrl = settings.BaseUrl;
+            }
 
             result.Add(new CodexProfile
             {
                 ProfileName = pair.Key,
                 ProviderId = providerId,
                 ProviderName = Get(provider, "name") ?? providerId,
-                BaseUrl = Get(provider, "base_url"),
+                BaseUrl = providerBaseUrl,
                 EnvKey = Get(provider, "env_key"),
                 Model = Get(values, "model"),
                 ReasoningEffort = Get(values, "model_reasoning_effort"),
@@ -65,6 +73,64 @@ internal sealed class CodexConfigManager
         }
 
         return result;
+    }
+
+    public void EnsureProviderCompatibility(CodexProfile profile)
+    {
+        if (!ProviderProxyServer.ShouldProxyProvider(profile.ProviderId) ||
+            string.IsNullOrWhiteSpace(profile.Model))
+        {
+            return;
+        }
+
+        var rawBaseUrl = GetProviderValue(profile.ProviderId, "base_url");
+        var savedSettings = _providerSettingsStore.Get(profile.ProviderId);
+        if (ProviderProxyServer.TryGetProviderId(rawBaseUrl, out _) && savedSettings is not null)
+        {
+            return;
+        }
+
+        var preset = ProviderPreset.Find(profile.ProviderId);
+        var upstreamBaseUrl = savedSettings?.BaseUrl;
+        if (string.IsNullOrWhiteSpace(upstreamBaseUrl) &&
+            !ProviderProxyServer.TryGetProviderId(profile.BaseUrl, out _))
+        {
+            upstreamBaseUrl = profile.BaseUrl;
+        }
+
+        upstreamBaseUrl ??= preset?.BaseUrl;
+        if (string.IsNullOrWhiteSpace(upstreamBaseUrl))
+        {
+            throw new InvalidOperationException($"Open Manage Providers and save '{profile.ProviderName ?? profile.ProviderId}' again so the tray can route it through the compatibility proxy.");
+        }
+
+        var models = new List<string>();
+        if (preset is not null)
+        {
+            models.AddRange(preset.Models);
+        }
+
+        if (savedSettings is not null)
+        {
+            models.AddRange(savedSettings.Models);
+        }
+
+        models.Add(profile.Model);
+
+        UpsertProfile(new ProfileDefinition
+        {
+            ProfileName = profile.ProfileName,
+            ProviderId = profile.ProviderId,
+            ProviderName = profile.ProviderName ?? preset?.ProviderName ?? profile.ProviderId,
+            BaseUrl = upstreamBaseUrl,
+            EnvKey = profile.EnvKey ?? savedSettings?.EnvKey ?? preset?.EnvKey ?? MakeEnvKey(profile.ProviderId),
+            Model = profile.Model,
+            UseProxy = true,
+            KnownModels = models,
+            ReasoningEffort = profile.ReasoningEffort,
+            ContextWindow = profile.ContextWindow,
+            SupportsReasoningSummaries = profile.SupportsReasoningSummaries
+        });
     }
 
     public void SetActiveProfile(CodexProfile profile)
@@ -160,10 +226,20 @@ internal sealed class CodexConfigManager
                      .GroupBy(definition => definition.ProviderId, StringComparer.OrdinalIgnoreCase)
                      .Select(group => group.First()))
         {
+            if (provider.UseProxy)
+            {
+                _providerSettingsStore.Upsert(provider);
+            }
+
+            var providerBaseUrl = provider.UseProxy
+                ? ProviderProxyServer.GetProviderBaseUrl(provider.ProviderId)
+                : provider.BaseUrl;
+
             lines.Add("# Added by Codex Profile Tray.");
             lines.Add($"[model_providers.{QuoteTomlKey(provider.ProviderId)}]");
             lines.Add($"name = {QuoteTomlString(provider.ProviderName)}");
-            lines.Add($"base_url = {QuoteTomlString(provider.BaseUrl)}");
+            lines.Add($"base_url = {QuoteTomlString(providerBaseUrl)}");
+            lines.Add("wire_api = \"responses\"");
             lines.Add($"env_key = {QuoteTomlString(provider.EnvKey)}");
             lines.Add($"env_key_instructions = {QuoteTomlString($"Set {provider.EnvKey} to your API key.")}");
             lines.Add("request_max_retries = 3");
@@ -220,6 +296,7 @@ internal sealed class CodexConfigManager
         if (!otherProfilesUsingProvider)
         {
             RemoveSection(lines, $"model_providers.{profile.ProviderId}");
+            _providerSettingsStore.Delete(profile.ProviderId);
         }
 
         File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
@@ -302,6 +379,20 @@ internal sealed class CodexConfigManager
         return sections;
     }
 
+    private string? GetProviderValue(string providerId, string key)
+    {
+        foreach (var section in LoadSections())
+        {
+            if (TryStripPrefix(section.Name, "model_providers.", out var sectionProviderId) &&
+                sectionProviderId.Equals(providerId, StringComparison.OrdinalIgnoreCase))
+            {
+                return Get(section.Values, key);
+            }
+        }
+
+        return null;
+    }
+
     private void BackupConfigIfExists()
     {
         if (!File.Exists(ConfigPath))
@@ -309,7 +400,7 @@ internal sealed class CodexConfigManager
             return;
         }
 
-        var backupPath = ConfigPath + ".bak-codex-profile-tray-" + DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var backupPath = ConfigPath + ".bak-codex-profile-tray-" + DateTime.Now.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
         File.Copy(ConfigPath, backupPath, overwrite: false);
     }
 
