@@ -1,9 +1,16 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace CodexProfileTray;
 
 internal sealed class AppSettings
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+    };
+
     public string? LastWorkspace { get; set; }
 
     private static string SettingsDirectory =>
@@ -20,7 +27,7 @@ internal sealed class AppSettings
                 return new AppSettings();
             }
 
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath)) ?? new AppSettings();
+            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath), JsonOptions) ?? new AppSettings();
         }
         catch
         {
@@ -31,7 +38,7 @@ internal sealed class AppSettings
     public void Save()
     {
         Directory.CreateDirectory(SettingsDirectory);
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+        var json = JsonSerializer.Serialize(this, JsonOptions);
         File.WriteAllText(SettingsPath, json);
     }
 }

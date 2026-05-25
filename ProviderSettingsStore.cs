@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace CodexProfileTray;
 
@@ -6,7 +7,8 @@ internal sealed class ProviderSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
     };
 
     private readonly object _gate = new();

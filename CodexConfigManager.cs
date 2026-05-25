@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace CodexProfileTray;
@@ -11,6 +12,11 @@ internal sealed class CodexConfigManager
 {
     private static readonly Regex SectionRegex = new(@"^\s*\[(?<section>[^\]]+)\]\s*$", RegexOptions.Compiled);
     private static readonly Regex KeyValueRegex = new(@"^\s*(?<key>[A-Za-z0-9_\-]+)\s*=\s*(?<value>.+?)\s*$", RegexOptions.Compiled);
+    private static readonly JsonSerializerOptions CatalogJsonOptions = new()
+    {
+        WriteIndented = true,
+        TypeInfoResolver = new DefaultJsonTypeInfoResolver()
+    };
     private const string ActiveProfileComment = "# Active profile selected by Codex Profile Tray.";
     private const string ModelCatalogComment = "# Model catalog selected by Codex Profile Tray.";
     private readonly ProviderSettingsStore _providerSettingsStore;
@@ -376,7 +382,7 @@ internal sealed class CodexConfigManager
         Directory.CreateDirectory(CodexHome);
         File.WriteAllText(
             ModelCatalogPath,
-            catalog.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+            catalog.ToJsonString(CatalogJsonOptions),
             new UTF8Encoding(false));
         return true;
     }
