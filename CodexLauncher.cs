@@ -12,22 +12,18 @@ internal sealed class CodexLauncher
         _configManager = configManager;
     }
 
-    public void Launch(CodexProfile profile, string workspace)
+    public void Launch(string workspace)
     {
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
         {
             throw new InvalidOperationException("Choose an existing project folder first.");
         }
 
-        _configManager.EnsureProviderCompatibility(profile);
-        profile = _configManager.LoadProfiles()
-            .FirstOrDefault(item => item.ProfileName.Equals(profile.ProfileName, StringComparison.OrdinalIgnoreCase))
-            ?? profile;
+        _configManager.EnsureProviderCompatibility();
+        _configManager.EnsureAppModelCatalog();
+        RestartCodexIfNeeded();
 
-        _configManager.SetActiveProfile(profile);
-        RestartCodexIfNeeded(profile);
-
-        var target = ResolveCodexExecutable();
+        var target = CodexExecutableLocator.Resolve();
         var startInfo = new ProcessStartInfo
         {
             FileName = target.FileName,
@@ -41,69 +37,14 @@ internal sealed class CodexLauncher
             startInfo.ArgumentList.Add(arg);
         }
 
-        startInfo.ArgumentList.Add("--profile");
-        startInfo.ArgumentList.Add(profile.ProfileName);
         startInfo.ArgumentList.Add("app");
         startInfo.ArgumentList.Add(workspace);
 
-        MakeApiKeyAvailable(profile, startInfo);
+        MakeApiKeysAvailable(startInfo);
         Process.Start(startInfo);
     }
 
-    private static CodexLaunchTarget ResolveCodexExecutable()
-    {
-        var candidates = new List<string>();
-        AddIfPresent(candidates, Environment.GetEnvironmentVariable("CODEX_CLI_PATH"));
-
-        var localBin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenAI", "Codex", "bin");
-        if (Directory.Exists(localBin))
-        {
-            candidates.AddRange(
-                Directory.GetFiles(localBin, "codex.exe", SearchOption.AllDirectories)
-                    .Select(path => new FileInfo(path))
-                    .OrderByDescending(file => file.LastWriteTimeUtc)
-                    .Select(file => file.FullName));
-        }
-
-        candidates.AddRange(FindOnPath("codex.exe"));
-        candidates.AddRange(FindOnPath("codex.cmd"));
-        candidates.AddRange(FindOnPath("codex.ps1"));
-
-        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            if (!File.Exists(candidate))
-            {
-                continue;
-            }
-
-            var extension = Path.GetExtension(candidate).ToLowerInvariant();
-            if (extension == ".exe")
-            {
-                return new CodexLaunchTarget(candidate, Array.Empty<string>());
-            }
-
-            if (extension == ".ps1")
-            {
-                return new CodexLaunchTarget(ResolvePowerShell(), new[] { "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", candidate });
-            }
-
-            if (extension is ".cmd" or ".bat")
-            {
-                return new CodexLaunchTarget(Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe", new[] { "/d", "/c", candidate });
-            }
-        }
-
-        throw new FileNotFoundException("Could not find the Codex CLI. Install Codex first, then try again.");
-    }
-
-    private static string ResolvePowerShell()
-    {
-        return FindOnPath("pwsh.exe").FirstOrDefault()
-            ?? FindOnPath("powershell.exe").FirstOrDefault()
-            ?? "powershell.exe";
-    }
-
-    private static void RestartCodexIfNeeded(CodexProfile profile)
+    private static void RestartCodexIfNeeded()
     {
         var runningCodex = Process.GetProcessesByName("Codex")
             .Where(IsDesktopCodexProcess)
@@ -115,7 +56,7 @@ internal sealed class CodexLauncher
         }
 
         var result = MessageBox.Show(
-            $"Codex is already running. Restart it now so '{profile.ProfileName}' becomes the active profile?",
+            "Codex is already running. Restart it now so provider and model changes are loaded?",
             "Codex Profile Tray",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question);
@@ -175,6 +116,17 @@ internal sealed class CodexLauncher
         }
     }
 
+    private void MakeApiKeysAvailable(ProcessStartInfo startInfo)
+    {
+        foreach (var profile in _configManager.LoadProfiles()
+                     .Where(profile => !profile.IsBuiltInOpenAI)
+                     .GroupBy(profile => profile.ProviderId, StringComparer.OrdinalIgnoreCase)
+                     .Select(group => group.First()))
+        {
+            MakeApiKeyAvailable(profile, startInfo);
+        }
+    }
+
     private static void MakeApiKeyAvailable(CodexProfile profile, ProcessStartInfo startInfo)
     {
         if (string.IsNullOrWhiteSpace(profile.EnvKey) || profile.IsBuiltInOpenAI)
@@ -212,29 +164,6 @@ internal sealed class CodexLauncher
             ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User)
             ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine);
     }
-
-    private static void AddIfPresent(List<string> items, string? value)
-    {
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            items.Add(value);
-        }
-    }
-
-    private static IEnumerable<string> FindOnPath(string fileName)
-    {
-        var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var candidate = Path.Combine(directory, fileName);
-            if (File.Exists(candidate))
-            {
-                yield return candidate;
-            }
-        }
-    }
-
-    private sealed record CodexLaunchTarget(string FileName, IReadOnlyList<string> PrefixArguments);
 
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessageTimeout(

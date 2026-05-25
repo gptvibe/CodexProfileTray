@@ -6,7 +6,6 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly CodexConfigManager _configManager;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly NotifyIcon _notifyIcon;
-    private readonly ToolStripMenuItem _openMenu = new("Open Codex With Profile");
     private readonly CodexLauncher _launcher;
     private readonly ProviderProxyServer _proxyServer;
     private readonly Icon _appIcon;
@@ -34,8 +33,7 @@ internal sealed class TrayAppContext : ApplicationContext
             Visible = true,
             ContextMenuStrip = BuildContextMenu()
         };
-        _notifyIcon.DoubleClick += (_, _) => ShowProfileManager();
-        RefreshOpenMenu();
+        _notifyIcon.DoubleClick += (_, _) => LaunchCodex();
     }
 
     protected override void Dispose(bool disposing)
@@ -54,14 +52,14 @@ internal sealed class TrayAppContext : ApplicationContext
     private ContextMenuStrip BuildContextMenu()
     {
         var menu = new ContextMenuStrip();
-        menu.Opening += (_, _) => RefreshOpenMenu();
 
+        var openCodex = new ToolStripMenuItem("Open Codex", null, (_, _) => LaunchCodex());
         var manageProfiles = new ToolStripMenuItem("Manage Providers...", null, (_, _) => ShowProfileManager());
         var chooseFolder = new ToolStripMenuItem("Choose Project Folder...", null, (_, _) => ChooseWorkspace());
         var openConfig = new ToolStripMenuItem("Open Codex Config", null, (_, _) => OpenConfig());
         var exit = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());
 
-        menu.Items.Add(_openMenu);
+        menu.Items.Add(openCodex);
         menu.Items.Add(manageProfiles);
         menu.Items.Add(chooseFolder);
         menu.Items.Add(new ToolStripSeparator());
@@ -71,41 +69,10 @@ internal sealed class TrayAppContext : ApplicationContext
         return menu;
     }
 
-    private void RefreshOpenMenu()
-    {
-        _openMenu.DropDownItems.Clear();
-
-        IReadOnlyList<CodexProfile> profiles;
-        try
-        {
-            profiles = _configManager.LoadProfiles();
-        }
-        catch (Exception ex)
-        {
-            _openMenu.DropDownItems.Add(new ToolStripMenuItem("Could not read profiles") { Enabled = false });
-            _openMenu.DropDownItems.Add(new ToolStripMenuItem(ex.Message) { Enabled = false });
-            return;
-        }
-
-        if (profiles.Count == 0)
-        {
-            _openMenu.DropDownItems.Add(new ToolStripMenuItem("No profiles found") { Enabled = false });
-            return;
-        }
-
-        foreach (var profile in profiles)
-        {
-            var item = new ToolStripMenuItem(profile.ToString());
-            item.Click += (_, _) => Launch(profile);
-            _openMenu.DropDownItems.Add(item);
-        }
-    }
-
     private void ShowProfileManager()
     {
         using var form = new ProfileManagerForm(_configManager);
         form.ShowDialog();
-        RefreshOpenMenu();
     }
 
     private void ChooseWorkspace()
@@ -134,7 +101,7 @@ internal sealed class TrayAppContext : ApplicationContext
         }
     }
 
-    private void Launch(CodexProfile profile)
+    private void LaunchCodex()
     {
         try
         {
@@ -144,13 +111,13 @@ internal sealed class TrayAppContext : ApplicationContext
                 return;
             }
 
-            if (ProviderProxyServer.ShouldProxyProvider(profile.ProviderId) && !_proxyServer.IsRunning)
+            if (_configManager.LoadProfiles().Any(profile => ProviderProxyServer.ShouldProxyProvider(profile.ProviderId)) &&
+                !_proxyServer.IsRunning)
             {
                 throw new InvalidOperationException($"The local compatibility proxy is not running. {_proxyStartError ?? "Exit and reopen Codex Profile Tray, then try again."}");
             }
 
-            _launcher.Launch(profile, _settings.LastWorkspace);
-            _settings.LastProfile = profile.ProfileName;
+            _launcher.Launch(_settings.LastWorkspace);
             _settings.Save();
         }
         catch (Exception ex)

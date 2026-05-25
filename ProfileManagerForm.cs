@@ -2,13 +2,13 @@ namespace CodexProfileTray;
 
 internal sealed class ProfileManagerForm : Form
 {
-    private static readonly Color Page = Color.FromArgb(248, 250, 252);
-    private static readonly Color Sidebar = Color.FromArgb(15, 23, 42);
-    private static readonly Color SidebarMuted = Color.FromArgb(148, 163, 184);
-    private static readonly Color TextPrimary = Color.FromArgb(15, 23, 42);
-    private static readonly Color TextMuted = Color.FromArgb(100, 116, 139);
+    private static readonly Color Page = Color.FromArgb(246, 248, 251);
+    private static readonly Color Sidebar = Color.FromArgb(17, 24, 39);
+    private static readonly Color SidebarSelected = Color.FromArgb(31, 41, 55);
+    private static readonly Color SidebarMuted = Color.FromArgb(156, 163, 175);
+    private static readonly Color TextPrimary = Color.FromArgb(17, 24, 39);
+    private static readonly Color TextMuted = Color.FromArgb(86, 104, 128);
     private static readonly Color Accent = Color.FromArgb(37, 99, 235);
-    private static readonly Color AccentSoft = Color.FromArgb(219, 234, 254);
     private static readonly Color Border = Color.FromArgb(203, 213, 225);
 
     private readonly CodexConfigManager _configManager;
@@ -35,10 +35,10 @@ internal sealed class ProfileManagerForm : Form
         _configManager = configManager;
         Text = "Codex Profile Tray";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1120, 720);
-        Size = new Size(1160, 760);
+        MinimumSize = new Size(1040, 660);
+        Size = new Size(1100, 700);
         BackColor = Page;
-        Font = new Font("Segoe UI", 9.5F);
+        Font = new Font("Segoe UI", 10F);
         Icon = AppIcons.GetAppIcon();
 
         BuildUi();
@@ -54,7 +54,7 @@ internal sealed class ProfileManagerForm : Form
             RowCount = 1,
             BackColor = Page
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 286));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
@@ -67,30 +67,30 @@ internal sealed class ProfileManagerForm : Form
         var sidebar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(22, 20, 18, 20),
+            Padding = new Padding(24, 24, 22, 24),
             RowCount = 5,
             ColumnCount = 1,
             BackColor = Sidebar
         };
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
 
         var title = new Label
         {
             Text = "Profiles",
             Dock = DockStyle.Fill,
             ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
             TextAlign = ContentAlignment.BottomLeft
         };
         sidebar.Controls.Add(title, 0, 0);
 
         var hint = new Label
         {
-            Text = "OpenAI-compatible configs",
+            Text = "OpenAI-compatible providers",
             Dock = DockStyle.Fill,
             ForeColor = SidebarMuted,
             TextAlign = ContentAlignment.TopLeft
@@ -101,18 +101,20 @@ internal sealed class ProfileManagerForm : Form
         _profilesList.BorderStyle = BorderStyle.None;
         _profilesList.BackColor = Sidebar;
         _profilesList.ForeColor = Color.White;
-        _profilesList.ItemHeight = 64;
+        _profilesList.ItemHeight = 60;
         _profilesList.IntegralHeight = false;
         _profilesList.DrawMode = DrawMode.OwnerDrawFixed;
         _profilesList.SelectedIndexChanged += (_, _) => LoadSelectedProfile();
         _profilesList.DrawItem += DrawProfileItem;
         sidebar.Controls.Add(_profilesList, 0, 2);
 
-        var newButton = CreateButton("New setup", accent: false);
+        var newButton = CreateButton("New provider", accent: false);
+        newButton.Dock = DockStyle.Fill;
         newButton.Click += (_, _) => NewProviderSetup();
         sidebar.Controls.Add(newButton, 0, 3);
 
-        var deleteButton = CreateButton("Delete selected profile", accent: false);
+        var deleteButton = CreateButton("Delete", accent: false);
+        deleteButton.Dock = DockStyle.Fill;
         deleteButton.Click += (_, _) => DeleteSelectedProfile();
         sidebar.Controls.Add(deleteButton, 0, 4);
 
@@ -124,34 +126,34 @@ internal sealed class ProfileManagerForm : Form
         var editor = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(34, 28, 34, 24),
+            Padding = new Padding(44, 34, 44, 28),
             RowCount = 12,
             ColumnCount = 3,
             BackColor = Page
         };
         editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         editor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
 
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
         editor.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
 
         var header = new Label
         {
-            Text = "Set Up Provider",
+            Text = "Provider Setup",
             Dock = DockStyle.Fill,
             ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 20F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft
         };
         editor.Controls.Add(header, 0, 0);
@@ -161,11 +163,11 @@ internal sealed class ProfileManagerForm : Form
         _presetBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _presetBox.Items.AddRange(ProviderPreset.All.Cast<object>().ToArray());
         _presetBox.SelectedIndexChanged += (_, _) => ApplySelectedPreset();
-        AddLabeledControl(editor, "Provider type", _presetBox, 1, columnSpan: 2);
+        AddLabeledControl(editor, "Provider", _presetBox, 1, columnSpan: 2);
 
         StyleTextBox(_providerNameBox);
         _providerNameBox.PlaceholderText = "Provider display name";
-        AddLabeledControl(editor, "Display name", _providerNameBox, 2, columnSpan: 2);
+        AddLabeledControl(editor, "Display", _providerNameBox, 2, columnSpan: 2);
 
         StyleTextBox(_baseUrlBox);
         _baseUrlBox.PlaceholderText = "https://api.example.com/v1";
@@ -195,7 +197,7 @@ internal sealed class ProfileManagerForm : Form
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
-            Padding = new Padding(0, 6, 0, 0),
+            Padding = new Padding(0, 8, 0, 0),
             BackColor = Page
         };
         _contextEnabledBox.Text = "Set a context window";
@@ -203,6 +205,7 @@ internal sealed class ProfileManagerForm : Form
         _contextEnabledBox.ForeColor = TextPrimary;
         _contextEnabledBox.CheckedChanged += (_, _) => _contextWindowBox.Enabled = _contextEnabledBox.Checked;
         _contextWindowBox.Width = 190;
+        _contextWindowBox.Height = 30;
         _contextWindowBox.Minimum = 1;
         _contextWindowBox.Maximum = 100_000_000;
         _contextWindowBox.Increment = 1000;
@@ -216,7 +219,7 @@ internal sealed class ProfileManagerForm : Form
         _reasoningEffortBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _reasoningEffortBox.Items.AddRange(new object[] { "Auto", "none", "minimal", "low", "medium", "high", "xhigh" });
         _reasoningEffortBox.SelectedIndex = 0;
-        AddLabeledControl(editor, "Reasoning effort", _reasoningEffortBox, 7, columnSpan: 2);
+        AddLabeledControl(editor, "Reasoning", _reasoningEffortBox, 7, columnSpan: 2);
 
         StyleCombo(_reasoningSummariesBox);
         _reasoningSummariesBox.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -227,11 +230,13 @@ internal sealed class ProfileManagerForm : Form
         _secretStatusLabel.Dock = DockStyle.Fill;
         _secretStatusLabel.ForeColor = TextMuted;
         _secretStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
+        _secretStatusLabel.Padding = new Padding(4, 0, 0, 0);
         editor.Controls.Add(_secretStatusLabel, 1, 9);
         editor.SetColumnSpan(_secretStatusLabel, 2);
 
         _statusLabel.Dock = DockStyle.Fill;
         _statusLabel.ForeColor = TextMuted;
+        _statusLabel.Padding = new Padding(4, 0, 0, 0);
         editor.Controls.Add(_statusLabel, 1, 10);
         editor.SetColumnSpan(_statusLabel, 2);
 
@@ -244,7 +249,7 @@ internal sealed class ProfileManagerForm : Form
         };
         var closeButton = CreateButton("Close", accent: false);
         closeButton.Click += (_, _) => Close();
-        var saveButton = CreateButton("Save profile", accent: true);
+        var saveButton = CreateButton("Save provider", accent: true);
         saveButton.Width = 150;
         saveButton.Click += (_, _) => SaveProfile();
         footer.Controls.Add(closeButton);
@@ -264,16 +269,21 @@ internal sealed class ProfileManagerForm : Form
 
         var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
         var bounds = e.Bounds;
-        using var background = new SolidBrush(selected ? Color.FromArgb(30, 41, 59) : Sidebar);
+        using var background = new SolidBrush(selected ? SidebarSelected : Sidebar);
         e.Graphics.FillRectangle(background, bounds);
+        if (selected)
+        {
+            using var accentBrush = new SolidBrush(Accent);
+            e.Graphics.FillRectangle(accentBrush, bounds.Left, bounds.Top + 8, 4, bounds.Height - 16);
+        }
 
         if (_profilesList.Items[e.Index] is not CodexProfile profile)
         {
             return;
         }
 
-        var titleRect = new Rectangle(bounds.Left + 12, bounds.Top + 11, bounds.Width - 24, 23);
-        var subtitleRect = new Rectangle(bounds.Left + 12, bounds.Top + 36, bounds.Width - 24, 20);
+        var titleRect = new Rectangle(bounds.Left + 16, bounds.Top + 10, bounds.Width - 28, 23);
+        var subtitleRect = new Rectangle(bounds.Left + 16, bounds.Top + 34, bounds.Width - 28, 20);
         TextRenderer.DrawText(e.Graphics, profile.ProfileName, new Font(Font, FontStyle.Bold), titleRect, Color.White, TextFormatFlags.EndEllipsis);
         TextRenderer.DrawText(e.Graphics, profile.Model ?? profile.ProviderName ?? profile.ProviderId, Font, subtitleRect, SidebarMuted, TextFormatFlags.EndEllipsis);
     }
@@ -285,7 +295,9 @@ internal sealed class ProfileManagerForm : Form
             Text = labelText,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = TextMuted,
-            Dock = DockStyle.Fill
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 10F),
+            Margin = new Padding(0, 0, 18, 0)
         };
         panel.Controls.Add(label, 0, row);
 
@@ -305,7 +317,7 @@ internal sealed class ProfileManagerForm : Form
             BackColor = accent ? Accent : Color.White,
             ForeColor = accent ? Color.White : TextPrimary,
             Cursor = Cursors.Hand,
-            Margin = new Padding(5),
+            Margin = new Padding(5, 6, 5, 6),
             UseVisualStyleBackColor = false
         };
         button.FlatAppearance.BorderSize = accent ? 0 : 1;
@@ -318,7 +330,8 @@ internal sealed class ProfileManagerForm : Form
         textBox.BorderStyle = BorderStyle.FixedSingle;
         textBox.BackColor = Color.White;
         textBox.ForeColor = TextPrimary;
-        textBox.Margin = new Padding(0, 6, 12, 6);
+        textBox.Height = 30;
+        textBox.Margin = new Padding(0, 7, 12, 7);
     }
 
     private static void StyleCombo(ComboBox comboBox)
@@ -326,7 +339,8 @@ internal sealed class ProfileManagerForm : Form
         comboBox.FlatStyle = FlatStyle.Flat;
         comboBox.BackColor = Color.White;
         comboBox.ForeColor = TextPrimary;
-        comboBox.Margin = new Padding(0, 6, 12, 6);
+        comboBox.Height = 30;
+        comboBox.Margin = new Padding(0, 7, 12, 7);
     }
 
     private void ReloadProfiles(string? selectProfileName = null)
@@ -358,7 +372,7 @@ internal sealed class ProfileManagerForm : Form
         _presetBox.SelectedIndex = 0;
         _isLoading = false;
         ApplySelectedPreset();
-        _statusLabel.Text = "Choose a preset, paste an API key, then fetch models. Use Custom for providers not listed.";
+        _statusLabel.Text = "Choose a provider, paste an API key, then fetch models. Use Custom for providers not listed.";
     }
 
     private void ApplySelectedPreset()
@@ -386,7 +400,7 @@ internal sealed class ProfileManagerForm : Form
             : WindowsCredentialStore.HasSecret(preset.ProviderId)
                 ? "A key is already saved for this provider."
                 : "Paste your API key once. It will be saved in Windows Credential Manager.";
-        _statusLabel.Text = "Choose a model, choose reasoning effort, then save the profile.";
+        _statusLabel.Text = "Choose the default model, then save. The Codex app model picker will handle later changes.";
     }
 
     private void LoadSelectedProfile()
@@ -443,7 +457,7 @@ internal sealed class ProfileManagerForm : Form
             : hasSecret
                 ? "A key is saved in Windows Credential Manager for this provider."
                 : "No key saved yet. Paste one and click Save key or Save profile.";
-        _statusLabel.Text = "Reasoning effort is saved with this model profile.";
+        _statusLabel.Text = "This provider and model will be available inside the Codex app picker.";
     }
 
     private void SaveKeyOnly()
@@ -512,7 +526,8 @@ internal sealed class ProfileManagerForm : Form
             }
 
             _configManager.UpsertProfile(definition);
-            _statusLabel.Text = $"Saved {definition.ProfileName}.";
+            _configManager.SetActiveProfile(definition);
+            _statusLabel.Text = $"Saved {definition.ProviderName}. Open Codex and choose models in the app picker.";
             ReloadProfiles(definition.ProfileName);
         }
         catch (Exception ex)

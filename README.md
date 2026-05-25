@@ -7,8 +7,9 @@ The goal is simple: no command line, no hand-editing TOML, and no API keys commi
 ## What It Does
 
 - Runs in the Windows system tray
-- Opens the normal Codex Windows app with a selected profile
+- Opens the normal Codex Windows app and lets Codex handle model changes
 - Creates Codex provider/profile config for you
+- Adds saved provider models to the Codex app model picker
 - Works with OpenAI-compatible API URLs
 - Bridges Codex's Responses API calls to provider `/chat/completions` APIs when needed
 - Lets you type model IDs manually
@@ -31,7 +32,7 @@ Windows may show a SmartScreen warning because this is an unsigned open-source a
 3. Pick a provider from the dropdown.
 4. Paste your API key.
 5. Click **Fetch** to load model IDs from that provider.
-6. Choose one model.
+6. Choose the default model.
 7. Choose a reasoning effort, or leave it on **Auto**.
 8. Click **Save**.
 
@@ -45,7 +46,7 @@ Use **Custom OpenAI-compatible API** only when the provider is not in the dropdo
 https://api.example.com/v1
 ```
 
-The app writes one Codex profile for the selected provider, model, and reasoning effort. Repeat the save step if you want another model or another reasoning setting.
+The app saves the provider, makes it the active Codex provider, and publishes the provider's models to Codex's own model picker. After that, choose the model and reasoning effort in the Codex Windows app.
 
 ## Included Presets
 
@@ -66,11 +67,11 @@ The app writes one Codex profile for the selected provider, model, and reasoning
 2. Click **Choose Project Folder...**.
 3. Pick your project folder.
 4. Right-click the tray icon again.
-5. Choose a profile under **Open Codex With Profile**.
+5. Click **Open Codex**.
 
-When you choose a profile, the tray app makes that profile the active Codex config before opening Codex. If Codex is already running, the tray app asks to restart it so the desktop app reloads the selected provider.
+When you save a provider, the tray app makes that provider the active Codex config before opening Codex. If Codex is already running, the tray app asks to restart it so the desktop app reloads provider and model picker changes.
 
-Your coding session still happens in the normal Codex Windows app. This tray app only handles setup, switching, and launching.
+Your coding session still happens in the normal Codex Windows app. This tray app only handles setup, provider registration, and launching.
 
 ## Why The Tray Must Stay Running
 

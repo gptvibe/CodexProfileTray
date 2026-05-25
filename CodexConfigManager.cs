@@ -1,5 +1,8 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace CodexProfileTray;
@@ -8,10 +11,13 @@ internal sealed class CodexConfigManager
 {
     private static readonly Regex SectionRegex = new(@"^\s*\[(?<section>[^\]]+)\]\s*$", RegexOptions.Compiled);
     private static readonly Regex KeyValueRegex = new(@"^\s*(?<key>[A-Za-z0-9_\-]+)\s*=\s*(?<value>.+?)\s*$", RegexOptions.Compiled);
+    private const string ActiveProfileComment = "# Active profile selected by Codex Profile Tray.";
+    private const string ModelCatalogComment = "# Model catalog selected by Codex Profile Tray.";
     private readonly ProviderSettingsStore _providerSettingsStore;
 
     public string CodexHome { get; }
     public string ConfigPath { get; }
+    public string ModelCatalogPath { get; }
 
     public CodexConfigManager(ProviderSettingsStore? providerSettingsStore = null)
     {
@@ -24,6 +30,7 @@ internal sealed class CodexConfigManager
 
         CodexHome = codexHome;
         ConfigPath = Path.Combine(CodexHome, "config.toml");
+        ModelCatalogPath = Path.Combine(CodexHome, "codex-profile-tray-model-catalog.json");
     }
 
     public IReadOnlyList<CodexProfile> LoadProfiles()
@@ -133,6 +140,43 @@ internal sealed class CodexConfigManager
         });
     }
 
+    public void EnsureProviderCompatibility()
+    {
+        foreach (var profile in LoadProfiles().Where(profile => ProviderProxyServer.ShouldProxyProvider(profile.ProviderId)).ToList())
+        {
+            EnsureProviderCompatibility(profile);
+        }
+    }
+
+    public void EnsureAppModelCatalog()
+    {
+        var profiles = LoadProfiles()
+            .Where(profile => !string.IsNullOrWhiteSpace(profile.Model))
+            .Select(profile => new ProfileDefinition
+            {
+                ProfileName = profile.ProfileName,
+                ProviderId = profile.ProviderId,
+                ProviderName = profile.ProviderName ?? profile.ProviderId,
+                BaseUrl = profile.BaseUrl ?? ProviderPreset.Find(profile.ProviderId)?.BaseUrl ?? string.Empty,
+                EnvKey = profile.EnvKey ?? ProviderPreset.Find(profile.ProviderId)?.EnvKey ?? MakeEnvKey(profile.ProviderId),
+                Model = profile.Model!,
+                UseProxy = ProviderProxyServer.ShouldProxyProvider(profile.ProviderId),
+                KnownModels = new[] { profile.Model! },
+                ReasoningEffort = profile.ReasoningEffort,
+                ContextWindow = profile.ContextWindow,
+                SupportsReasoningSummaries = profile.SupportsReasoningSummaries
+            })
+            .ToList();
+
+        var lines = File.Exists(ConfigPath)
+            ? File.ReadAllLines(ConfigPath).ToList()
+            : new List<string>();
+
+        var hasCatalogModels = RefreshModelCatalog(profiles);
+        ConfigureModelCatalogPath(lines, hasCatalogModels);
+        WriteConfigIfChanged(lines);
+    }
+
     public void SetActiveProfile(CodexProfile profile)
     {
         if (string.IsNullOrWhiteSpace(profile.Model))
@@ -153,11 +197,11 @@ internal sealed class CodexConfigManager
             "model_reasoning_effort",
             "model_context_window",
             "model_supports_reasoning_summaries"
-        });
+        }, new[] { ActiveProfileComment });
 
         var activeLines = new List<string>
         {
-            "# Active profile selected by Codex Profile Tray.",
+            ActiveProfileComment,
             $"model_provider = {QuoteTomlString(profile.ProviderId)}",
             $"model = {QuoteTomlString(profile.Model)}"
         };
@@ -180,13 +224,24 @@ internal sealed class CodexConfigManager
         activeLines.Add(string.Empty);
         lines.InsertRange(0, activeLines);
 
-        if (string.Join('\n', originalLines) == string.Join('\n', lines))
-        {
-            return;
-        }
+        WriteConfigIfChanged(originalLines, lines);
+    }
 
-        BackupConfigIfExists();
-        File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
+    public void SetActiveProfile(ProfileDefinition definition)
+    {
+        SetActiveProfile(new CodexProfile
+        {
+            ProfileName = definition.ProfileName,
+            ProviderId = definition.ProviderId,
+            ProviderName = definition.ProviderName,
+            BaseUrl = definition.BaseUrl,
+            EnvKey = definition.EnvKey,
+            Model = definition.Model,
+            ReasoningEffort = definition.ReasoningEffort,
+            ContextWindow = definition.ContextWindow,
+            SupportsReasoningSummaries = definition.SupportsReasoningSummaries,
+            IsBuiltInOpenAI = definition.ProviderId.Equals("openai", StringComparison.OrdinalIgnoreCase)
+        });
     }
 
     public void UpsertProfile(ProfileDefinition definition)
@@ -272,7 +327,275 @@ internal sealed class CodexConfigManager
             lines.Add(string.Empty);
         }
 
+        var hasCatalogModels = RefreshModelCatalog(definitions);
+        ConfigureModelCatalogPath(lines, hasCatalogModels);
         File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
+    }
+
+    private bool RefreshModelCatalog(IReadOnlyList<ProfileDefinition> definitions)
+    {
+        var customModels = CollectCatalogModels(definitions).ToList();
+        if (customModels.Count == 0)
+        {
+            if (File.Exists(ModelCatalogPath))
+            {
+                File.Delete(ModelCatalogPath);
+            }
+
+            return false;
+        }
+
+        var catalog = LoadBundledModelCatalog();
+        var models = catalog["models"] as JsonArray ?? new JsonArray();
+        catalog["models"] = models;
+
+        var builtInSlugs = models
+            .OfType<JsonObject>()
+            .Select(model => GetJsonString(model, "slug"))
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var baseInstructions = models
+            .OfType<JsonObject>()
+            .FirstOrDefault(model => string.Equals(GetJsonString(model, "slug"), "gpt-5.5", StringComparison.OrdinalIgnoreCase))?["base_instructions"]?.GetValue<string>()
+            ?? models.OfType<JsonObject>().FirstOrDefault()?["base_instructions"]?.GetValue<string>()
+            ?? string.Empty;
+
+        var priority = 10_000;
+        foreach (var model in customModels.OrderBy(item => item.ProviderName, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(item => item.Model, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!builtInSlugs.Add(model.Model))
+            {
+                continue;
+            }
+
+            models.Add(CreateCatalogModel(model, baseInstructions, priority++));
+        }
+
+        Directory.CreateDirectory(CodexHome);
+        File.WriteAllText(
+            ModelCatalogPath,
+            catalog.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+            new UTF8Encoding(false));
+        return true;
+    }
+
+    private IEnumerable<CatalogModel> CollectCatalogModels(IReadOnlyList<ProfileDefinition> definitions)
+    {
+        var byProvider = _providerSettingsStore.LoadAll()
+            .ToDictionary(settings => settings.ProviderId, settings => settings, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var definition in definitions)
+        {
+            if (definition.ProviderId.Equals("openai", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!byProvider.TryGetValue(definition.ProviderId, out var settings))
+            {
+                settings = new ProviderSettings
+                {
+                    ProviderId = definition.ProviderId,
+                    ProviderName = definition.ProviderName,
+                    BaseUrl = definition.BaseUrl,
+                    EnvKey = definition.EnvKey
+                };
+                byProvider[definition.ProviderId] = settings;
+            }
+
+            settings.Models = settings.Models
+                .Concat(definition.KnownModels)
+                .Append(definition.Model)
+                .Where(model => !string.IsNullOrWhiteSpace(model))
+                .Select(model => model.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var profileHints = definitions
+            .Where(definition => !definition.ProviderId.Equals("openai", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(definition => MakeProviderModelKey(definition.ProviderId, definition.Model), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var settings in byProvider.Values
+                     .Where(settings => !settings.ProviderId.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(settings => settings.ProviderName, StringComparer.OrdinalIgnoreCase))
+        {
+            var preset = ProviderPreset.Find(settings.ProviderId);
+            foreach (var model in settings.Models
+                         .Where(model => !string.IsNullOrWhiteSpace(model))
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                profileHints.TryGetValue(MakeProviderModelKey(settings.ProviderId, model), out var definition);
+                yield return new CatalogModel(
+                    settings.ProviderId,
+                    settings.ProviderName,
+                    model,
+                    definition?.ReasoningEffort ?? preset?.ReasoningEffort,
+                    definition?.ContextWindow ?? preset?.ContextWindow ?? 1_000_000,
+                    definition?.SupportsReasoningSummaries ?? preset?.SupportsReasoningSummaries ?? false);
+            }
+        }
+    }
+
+    private JsonObject LoadBundledModelCatalog()
+    {
+        var target = CodexExecutableLocator.Resolve();
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = target.FileName,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in target.PrefixArguments)
+        {
+            process.StartInfo.ArgumentList.Add(arg);
+        }
+
+        process.StartInfo.ArgumentList.Add("debug");
+        process.StartInfo.ArgumentList.Add("models");
+        process.StartInfo.ArgumentList.Add("--bundled");
+
+        process.Start();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(15_000))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // Best effort cleanup when Codex does not return a catalog.
+            }
+
+            throw new TimeoutException("Timed out while reading Codex's bundled model catalog.");
+        }
+
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr)
+                ? "Could not read Codex's bundled model catalog."
+                : stderr.Trim());
+        }
+
+        return JsonNode.Parse(stdout)?.AsObject()
+            ?? new JsonObject { ["models"] = new JsonArray() };
+    }
+
+    private static JsonObject CreateCatalogModel(CatalogModel model, string baseInstructions, int priority)
+    {
+        var contextWindow = Math.Clamp(model.ContextWindow, 1, 100_000_000);
+        return new JsonObject
+        {
+            ["slug"] = model.Model,
+            ["display_name"] = BuildModelDisplayName(model.ProviderName, model.Model),
+            ["description"] = $"{model.ProviderName} model via Codex Profile Tray.",
+            ["default_reasoning_level"] = NormalizeReasoningEffort(model.ReasoningEffort),
+            ["supported_reasoning_levels"] = new JsonArray
+            {
+                CreateReasoningLevel("low", "Fast responses with lighter reasoning"),
+                CreateReasoningLevel("medium", "Balances speed and reasoning depth"),
+                CreateReasoningLevel("high", "Greater reasoning depth for complex problems"),
+                CreateReasoningLevel("xhigh", "Extra high reasoning depth for complex problems")
+            },
+            ["shell_type"] = "shell_command",
+            ["visibility"] = "list",
+            ["supported_in_api"] = true,
+            ["priority"] = priority,
+            ["additional_speed_tiers"] = new JsonArray(),
+            ["service_tiers"] = new JsonArray(),
+            ["base_instructions"] = baseInstructions,
+            ["supports_reasoning_summaries"] = model.SupportsReasoningSummaries,
+            ["default_reasoning_summary"] = "none",
+            ["support_verbosity"] = false,
+            ["default_verbosity"] = "low",
+            ["apply_patch_tool_type"] = "freeform",
+            ["web_search_tool_type"] = "text",
+            ["truncation_policy"] = new JsonObject
+            {
+                ["mode"] = "tokens",
+                ["limit"] = 10_000
+            },
+            ["supports_parallel_tool_calls"] = true,
+            ["supports_image_detail_original"] = false,
+            ["context_window"] = contextWindow,
+            ["max_context_window"] = contextWindow,
+            ["effective_context_window_percent"] = 95,
+            ["experimental_supported_tools"] = new JsonArray(),
+            ["input_modalities"] = new JsonArray { "text" },
+            ["supports_search_tool"] = false
+        };
+    }
+
+    private static JsonObject CreateReasoningLevel(string effort, string description)
+    {
+        return new JsonObject
+        {
+            ["effort"] = effort,
+            ["description"] = description
+        };
+    }
+
+    private static string NormalizeReasoningEffort(string? effort)
+    {
+        return effort?.ToLowerInvariant() switch
+        {
+            "low" => "low",
+            "high" => "high",
+            "xhigh" => "xhigh",
+            _ => "medium"
+        };
+    }
+
+    private static string BuildModelDisplayName(string providerName, string model)
+    {
+        var spaced = Regex.Replace(model, @"[_\-\/]+", " ");
+        spaced = Regex.Replace(spaced, @"\s+", " ").Trim();
+        if (string.IsNullOrWhiteSpace(spaced))
+        {
+            spaced = model;
+        }
+
+        var textInfo = CultureInfo.InvariantCulture.TextInfo;
+        var display = textInfo.ToTitleCase(spaced.ToLowerInvariant());
+        return model.StartsWith(providerName, StringComparison.OrdinalIgnoreCase)
+            ? display
+            : $"{providerName} {display}";
+    }
+
+    private void ConfigureModelCatalogPath(List<string> lines, bool hasCatalogModels)
+    {
+        if (hasCatalogModels)
+        {
+            RemoveTopLevelKeys(lines, new[] { "model_catalog_json" }, new[] { ModelCatalogComment });
+        }
+        else
+        {
+            RemoveTopLevelKeyIfOwned(lines, "model_catalog_json", ModelCatalogComment, ModelCatalogPath);
+        }
+
+        if (!hasCatalogModels)
+        {
+            return;
+        }
+
+        InsertTopLevelBlock(lines, new[]
+        {
+            ModelCatalogComment,
+            $"model_catalog_json = {QuoteTomlString(ModelCatalogPath)}",
+            string.Empty
+        });
     }
 
     public void DeleteProfile(CodexProfile profile)
@@ -300,6 +623,7 @@ internal sealed class CodexConfigManager
         }
 
         File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
+        EnsureAppModelCatalog();
     }
 
     public static string MakeProviderId(string profileName)
@@ -404,6 +728,43 @@ internal sealed class CodexConfigManager
         File.Copy(ConfigPath, backupPath, overwrite: false);
     }
 
+    private void WriteConfigIfChanged(List<string> lines)
+    {
+        var originalLines = File.Exists(ConfigPath)
+            ? File.ReadAllLines(ConfigPath).ToList()
+            : new List<string>();
+        WriteConfigIfChanged(originalLines, lines);
+    }
+
+    private void WriteConfigIfChanged(List<string> originalLines, List<string> lines)
+    {
+        if (string.Join('\n', originalLines) == string.Join('\n', lines))
+        {
+            return;
+        }
+
+        BackupConfigIfExists();
+        Directory.CreateDirectory(CodexHome);
+        File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
+    }
+
+    private static void InsertTopLevelBlock(List<string> lines, IReadOnlyList<string> block)
+    {
+        var insertAt = 0;
+        while (insertAt < lines.Count && !SectionRegex.IsMatch(lines[insertAt]))
+        {
+            insertAt++;
+        }
+
+        if (insertAt > 0 && insertAt <= lines.Count && !string.IsNullOrWhiteSpace(lines[insertAt - 1]))
+        {
+            lines.Insert(insertAt, string.Empty);
+            insertAt++;
+        }
+
+        lines.InsertRange(insertAt, block);
+    }
+
     private static void RemoveSection(List<string> lines, string sectionName)
     {
         var normalized = NormalizeSectionName(sectionName);
@@ -433,7 +794,10 @@ internal sealed class CodexConfigManager
         }
     }
 
-    private static void RemoveTopLevelKeys(List<string> lines, IReadOnlyCollection<string> keys)
+    private static void RemoveTopLevelKeys(
+        List<string> lines,
+        IReadOnlyCollection<string> keys,
+        IReadOnlyCollection<string>? comments = null)
     {
         for (var index = 0; index < lines.Count;)
         {
@@ -444,7 +808,38 @@ internal sealed class CodexConfigManager
 
             var keyMatch = KeyValueRegex.Match(lines[index]);
             if ((keyMatch.Success && keys.Contains(keyMatch.Groups["key"].Value)) ||
-                lines[index].Trim().Equals("# Active profile selected by Codex Profile Tray.", StringComparison.Ordinal))
+                (comments?.Contains(lines[index].Trim()) == true))
+            {
+                lines.RemoveAt(index);
+                continue;
+            }
+
+            index++;
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
+        {
+            lines.RemoveAt(0);
+        }
+    }
+
+    private static void RemoveTopLevelKeyIfOwned(List<string> lines, string key, string comment, string ownedValue)
+    {
+        for (var index = 0; index < lines.Count;)
+        {
+            if (SectionRegex.IsMatch(lines[index]))
+            {
+                break;
+            }
+
+            var trimmed = lines[index].Trim();
+            var keyMatch = KeyValueRegex.Match(lines[index]);
+            var isOwnedComment = trimmed.Equals(comment, StringComparison.Ordinal);
+            var isOwnedKey = keyMatch.Success &&
+                             keyMatch.Groups["key"].Value.Equals(key, StringComparison.OrdinalIgnoreCase) &&
+                             ParseTomlValue(keyMatch.Groups["value"].Value).Equals(ownedValue, StringComparison.OrdinalIgnoreCase);
+
+            if (isOwnedComment || isOwnedKey)
             {
                 lines.RemoveAt(index);
                 continue;
@@ -479,6 +874,20 @@ internal sealed class CodexConfigManager
         }
 
         return values.TryGetValue(key, out var value) ? value : null;
+    }
+
+    private static string? GetJsonString(JsonObject obj, string propertyName)
+    {
+        return obj.TryGetPropertyValue(propertyName, out var node) &&
+               node is JsonValue value &&
+               value.TryGetValue<string>(out var result)
+            ? result
+            : null;
+    }
+
+    private static string MakeProviderModelKey(string providerId, string model)
+    {
+        return providerId + "\u001f" + model;
     }
 
     private static int? TryParseInt(string? value)
@@ -588,4 +997,12 @@ internal sealed class CodexConfigManager
         public string Name { get; } = name;
         public Dictionary<string, string> Values { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
+
+    private sealed record CatalogModel(
+        string ProviderId,
+        string ProviderName,
+        string Model,
+        string? ReasoningEffort,
+        int ContextWindow,
+        bool SupportsReasoningSummaries);
 }

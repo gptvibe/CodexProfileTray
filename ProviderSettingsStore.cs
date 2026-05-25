@@ -21,6 +21,18 @@ internal sealed class ProviderSettingsStore
 
     public string SettingsPath { get; }
 
+    public IReadOnlyList<ProviderSettings> LoadAll()
+    {
+        lock (_gate)
+        {
+            return LoadAllUnsafe()
+                .Values
+                .OrderBy(item => item.ProviderId, StringComparer.OrdinalIgnoreCase)
+                .Select(Copy)
+                .ToList();
+        }
+    }
+
     public ProviderSettings? Get(string providerId)
     {
         if (string.IsNullOrWhiteSpace(providerId))
