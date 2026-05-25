@@ -67,6 +67,62 @@ internal sealed class CodexConfigManager
         return result;
     }
 
+    public void SetActiveProfile(CodexProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile.Model))
+        {
+            throw new InvalidOperationException($"Profile '{profile.ProfileName}' does not have a model.");
+        }
+
+        Directory.CreateDirectory(CodexHome);
+        var originalLines = File.Exists(ConfigPath)
+            ? File.ReadAllLines(ConfigPath).ToList()
+            : new List<string>();
+        var lines = originalLines.ToList();
+
+        RemoveTopLevelKeys(lines, new[]
+        {
+            "model_provider",
+            "model",
+            "model_reasoning_effort",
+            "model_context_window",
+            "model_supports_reasoning_summaries"
+        });
+
+        var activeLines = new List<string>
+        {
+            "# Active profile selected by Codex Profile Tray.",
+            $"model_provider = {QuoteTomlString(profile.ProviderId)}",
+            $"model = {QuoteTomlString(profile.Model)}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(profile.ReasoningEffort))
+        {
+            activeLines.Add($"model_reasoning_effort = {QuoteTomlString(profile.ReasoningEffort)}");
+        }
+
+        if (profile.ContextWindow.HasValue)
+        {
+            activeLines.Add($"model_context_window = {profile.ContextWindow.Value.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        if (profile.SupportsReasoningSummaries.HasValue)
+        {
+            activeLines.Add($"model_supports_reasoning_summaries = {profile.SupportsReasoningSummaries.Value.ToString().ToLowerInvariant()}");
+        }
+
+        activeLines.Add(string.Empty);
+        lines.InsertRange(0, activeLines);
+
+        if (string.Join('\n', originalLines) == string.Join('\n', lines))
+        {
+            return;
+        }
+
+        BackupConfigIfExists();
+        File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
+    }
+
     public void UpsertProfile(ProfileDefinition definition)
     {
         UpsertProfiles(new[] { definition });
@@ -283,6 +339,32 @@ internal sealed class CodexConfigManager
 
             lines.RemoveRange(start, index - start);
             index = start;
+        }
+    }
+
+    private static void RemoveTopLevelKeys(List<string> lines, IReadOnlyCollection<string> keys)
+    {
+        for (var index = 0; index < lines.Count;)
+        {
+            if (SectionRegex.IsMatch(lines[index]))
+            {
+                break;
+            }
+
+            var keyMatch = KeyValueRegex.Match(lines[index]);
+            if ((keyMatch.Success && keys.Contains(keyMatch.Groups["key"].Value)) ||
+                lines[index].Trim().Equals("# Active profile selected by Codex Profile Tray.", StringComparison.Ordinal))
+            {
+                lines.RemoveAt(index);
+                continue;
+            }
+
+            index++;
+        }
+
+        while (lines.Count > 0 && string.IsNullOrWhiteSpace(lines[0]))
+        {
+            lines.RemoveAt(0);
         }
     }
 

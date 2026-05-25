@@ -64,7 +64,9 @@ The app writes a Codex profile for each model ID. That lets Codex launch with th
 4. Right-click the tray icon again.
 5. Choose a profile under **Open Codex With Profile**.
 
-Your coding session still happens in the normal Codex Windows app. This tray app only handles setup and launching.
+When you choose a profile, the tray app makes that profile the active Codex config before opening Codex. If Codex is already running, the tray app asks to restart it so the desktop app reloads the selected provider.
+
+Your coding session still happens in the normal Codex Windows app. This tray app only handles setup, switching, and launching.
 
 ## Model Fetching
 
@@ -99,6 +101,8 @@ CodexProfileTray/my-provider
 ```
 
 Codex config receives only an environment variable name, not the secret value.
+
+When opening Codex, the tray app also makes the key available through that user environment variable so the Codex desktop app can read it.
 
 ## Build From Source
 
