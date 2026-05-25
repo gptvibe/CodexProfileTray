@@ -1,61 +1,94 @@
 # Codex Profile Tray
 
-Codex Profile Tray is a small native Windows tray app for switching OpenAI Codex profiles without touching the command line.
+A small Windows tray app for people who want to switch Codex providers without touching the command line.
 
-It is designed for people who use the Codex Windows app with multiple model providers, including OpenAI-compatible APIs such as DeepSeek, OpenRouter, local gateways, or other compatible endpoints.
+It helps you use the normal Codex Windows app with OpenAI-compatible APIs such as DeepSeek, OpenRouter, local model gateways, or your own proxy.
 
-## Features
+## What This App Does
 
-- Runs from the Windows system tray
-- Opens the Codex Windows app with a selected profile
-- Creates and edits Codex profiles in `%USERPROFILE%\.codex\config.toml`
-- Supports any OpenAI-compatible API base URL
-- Lets users type any model id, such as `gpt-5.5`, `gpt-5.4`, `deepseek-v4-pro`, or a local model name
-- Fetches model ids from `GET <base_url>/models` when the provider supports it
-- Optional context window field
-- Optional reasoning effort and reasoning summaries fields
-- Stores API keys in Windows Credential Manager, not in the repo and not in Codex config
+- Sits in the Windows system tray
+- Opens the Codex Windows app with a saved profile
+- Creates Codex profiles for you
+- Saves API keys in Windows Credential Manager
+- Keeps API keys out of GitHub and out of `config.toml`
+- Supports DeepSeek with one-click preset setup
+- Supports any OpenAI-compatible base URL
+- Can fetch model names from `/models` when the provider supports it
 
-## How It Works
+## Easiest Setup
 
-Codex Profile Tray writes provider/profile sections like this:
+1. Download `CodexProfileTray.exe` from the latest release.
+2. Double-click it.
+3. Look for the tray icon near the Windows clock.
+4. Right-click the icon.
+5. Click **Manage Providers...**.
+6. Pick **DeepSeek**.
+7. Paste your DeepSeek API key.
+8. Click **Save provider**.
 
-```toml
-[model_providers.my-provider]
-name = "My Provider"
-base_url = "https://api.example.com/v1"
-env_key = "CODEX_PROFILE_TRAY_MY_PROVIDER_API_KEY"
+That creates these Codex profiles automatically:
 
-[profiles.my-profile]
-model_provider = "my-provider"
-model = "gpt-5.5"
+- `deepseek-v4-pro`
+- `deepseek-v4-flash`
+
+You do not need to type those model names yourself.
+
+## Opening Codex
+
+1. Right-click the tray icon.
+2. Click **Choose Project Folder...** once.
+3. Right-click the tray icon again.
+4. Pick a profile under **Open Codex With Profile**.
+
+The tray app only handles setup and launching. Your actual coding session still happens inside the normal Codex Windows app.
+
+## Custom Provider Setup
+
+Use **Custom OpenAI-compatible API** when your provider is not DeepSeek.
+
+You need:
+
+- A display name, like `OpenRouter`
+- A base URL, like `https://openrouter.ai/api/v1`
+- An API key, if your provider needs one
+- One or more model IDs
+
+You can type model IDs manually, one per line, or click **Fetch models**. Fetching uses:
+
+```text
+GET <base_url>/models
 ```
 
-The API key itself is saved in Windows Credential Manager. When you launch Codex from the tray app, the app injects the right environment variable into the Codex process.
+Some providers do not expose model lists, or they require a different API prefix. If fetching fails, just type the model name manually.
 
-## Usage
+## Reasoning Effort
 
-1. Start `CodexProfileTray.exe`.
-2. Right-click the tray icon.
-3. Choose **Manage Profiles...**.
-4. Enter:
-   - Profile name
-   - Provider name
-   - Base URL
-   - API key
-   - Model id
-   - Optional context window
-5. Click **Fetch Models** if the provider supports the OpenAI-compatible `/models` endpoint.
-6. Click **Save Profile**.
-7. Right-click the tray icon again and choose the profile under **Open Codex With Profile**.
+Reasoning effort cannot be reliably fetched from the standard OpenAI-compatible `/models` response. Different providers expose different metadata, and many expose none.
 
-## Base URL Examples
+So the app keeps reasoning effort as an optional setting.
 
-- OpenAI-compatible API: `https://api.example.com/v1`
-- DeepSeek: `https://api.deepseek.com`
-- Local gateway: `http://localhost:1234/v1`
+For DeepSeek, **Auto** currently writes:
 
-If model fetching fails, the profile can still work. Some providers disable `/models`, require a different API prefix, or need account permissions.
+- `high` for `deepseek-v4-pro`
+- `low` for `deepseek-v4-flash`
+
+For custom providers, leave it on **Auto** unless you know the provider supports a specific value.
+
+## Context Window
+
+The context window field is optional.
+
+Set it only if you know the provider and model support a specific context size. Otherwise leave it unchecked.
+
+## Where Keys Are Stored
+
+API keys are stored in Windows Credential Manager under names like:
+
+```text
+CodexProfileTray/deepseek
+```
+
+The Codex config only receives an environment variable name, not the secret itself.
 
 ## Build From Source
 
@@ -71,11 +104,15 @@ dotnet build .\CodexProfileTray.csproj --configuration Release
 .\scripts\publish.ps1
 ```
 
-The published app appears under `artifacts\publish`.
+The published app appears under:
 
-## Security
+```text
+artifacts\publish\CodexProfileTray.exe
+```
 
-- Do not paste API keys into issues, screenshots, or commits.
-- Keys are stored under Windows Credential Manager target names starting with `CodexProfileTray/`.
-- `config.toml` backups are written next to your Codex config before profile edits.
-- This repository intentionally ignores Codex config, auth files, settings files, and secret-looking files.
+## Safety Notes
+
+- Never commit API keys.
+- Never paste keys into GitHub issues.
+- If you accidentally shared a key, rotate it at the provider dashboard.
+- This repository ignores build output, local settings, Codex auth files, and secret-looking files.

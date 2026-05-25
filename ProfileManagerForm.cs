@@ -2,13 +2,22 @@ namespace CodexProfileTray;
 
 internal sealed class ProfileManagerForm : Form
 {
+    private static readonly Color Page = Color.FromArgb(248, 250, 252);
+    private static readonly Color Sidebar = Color.FromArgb(15, 23, 42);
+    private static readonly Color SidebarMuted = Color.FromArgb(148, 163, 184);
+    private static readonly Color TextPrimary = Color.FromArgb(15, 23, 42);
+    private static readonly Color TextMuted = Color.FromArgb(100, 116, 139);
+    private static readonly Color Accent = Color.FromArgb(37, 99, 235);
+    private static readonly Color AccentSoft = Color.FromArgb(219, 234, 254);
+    private static readonly Color Border = Color.FromArgb(203, 213, 225);
+
     private readonly CodexConfigManager _configManager;
     private readonly ListBox _profilesList = new();
-    private readonly TextBox _profileNameBox = new();
+    private readonly ComboBox _presetBox = new();
     private readonly TextBox _providerNameBox = new();
     private readonly TextBox _baseUrlBox = new();
     private readonly TextBox _apiKeyBox = new();
-    private readonly ComboBox _modelBox = new();
+    private readonly TextBox _modelsBox = new();
     private readonly CheckBox _contextEnabledBox = new();
     private readonly NumericUpDown _contextWindowBox = new();
     private readonly ComboBox _reasoningEffortBox = new();
@@ -19,15 +28,18 @@ internal sealed class ProfileManagerForm : Form
     private List<CodexProfile> _profiles = new();
     private string? _loadedProviderId;
     private string? _loadedEnvKey;
+    private bool _isLoading;
 
     public ProfileManagerForm(CodexConfigManager configManager)
     {
         _configManager = configManager;
-        Text = "Manage Codex Profiles";
+        Text = "Codex Profile Tray";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(900, 620);
-        Size = new Size(940, 650);
-        Font = new Font("Segoe UI", 9F);
+        MinimumSize = new Size(980, 680);
+        Size = new Size(1040, 720);
+        BackColor = Page;
+        Font = new Font("Segoe UI", 9.5F);
+        Icon = AppIcons.GetAppIcon();
 
         BuildUi();
         ReloadProfiles();
@@ -35,126 +47,160 @@ internal sealed class ProfileManagerForm : Form
 
     private void BuildUi()
     {
-        var root = new SplitContainer
+        var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel1,
-            SplitterDistance = 270
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Page
         };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
-        var leftPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(12),
-            RowCount = 4,
-            ColumnCount = 1
-        };
-        leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-        leftPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        root.Panel1.Controls.Add(leftPanel);
+        root.Controls.Add(BuildSidebar(), 0, 0);
+        root.Controls.Add(BuildEditor(), 1, 0);
+    }
 
-        leftPanel.Controls.Add(new Label
+    private Control BuildSidebar()
+    {
+        var sidebar = new TableLayoutPanel
         {
-            Text = "Profiles",
             Dock = DockStyle.Fill,
-            Font = new Font(Font, FontStyle.Bold)
-        }, 0, 0);
+            Padding = new Padding(22, 20, 18, 20),
+            RowCount = 5,
+            ColumnCount = 1,
+            BackColor = Sidebar
+        };
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+
+        var title = new Label
+        {
+            Text = "Codex Profiles",
+            Dock = DockStyle.Fill,
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
+            TextAlign = ContentAlignment.BottomLeft
+        };
+        sidebar.Controls.Add(title, 0, 0);
+
+        var hint = new Label
+        {
+            Text = "Providers and model profiles",
+            Dock = DockStyle.Fill,
+            ForeColor = SidebarMuted,
+            TextAlign = ContentAlignment.TopLeft
+        };
+        sidebar.Controls.Add(hint, 0, 1);
 
         _profilesList.Dock = DockStyle.Fill;
+        _profilesList.BorderStyle = BorderStyle.None;
+        _profilesList.BackColor = Sidebar;
+        _profilesList.ForeColor = Color.White;
+        _profilesList.ItemHeight = 52;
         _profilesList.IntegralHeight = false;
+        _profilesList.DrawMode = DrawMode.OwnerDrawFixed;
         _profilesList.SelectedIndexChanged += (_, _) => LoadSelectedProfile();
-        leftPanel.Controls.Add(_profilesList, 0, 1);
+        _profilesList.DrawItem += DrawProfileItem;
+        sidebar.Controls.Add(_profilesList, 0, 2);
 
-        var newButton = new Button
-        {
-            Text = "New Profile",
-            Dock = DockStyle.Fill
-        };
-        newButton.Click += (_, _) => NewProfile();
-        leftPanel.Controls.Add(newButton, 0, 2);
+        var newButton = CreateButton("New setup", accent: false);
+        newButton.Click += (_, _) => NewProviderSetup();
+        sidebar.Controls.Add(newButton, 0, 3);
 
-        var deleteButton = new Button
-        {
-            Text = "Delete Selected",
-            Dock = DockStyle.Fill
-        };
+        var deleteButton = CreateButton("Delete selected profile", accent: false);
         deleteButton.Click += (_, _) => DeleteSelectedProfile();
-        leftPanel.Controls.Add(deleteButton, 0, 3);
+        sidebar.Controls.Add(deleteButton, 0, 4);
 
-        var rightPanel = new TableLayoutPanel
+        return sidebar;
+    }
+
+    private Control BuildEditor()
+    {
+        var editor = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(18, 14, 18, 14),
+            Padding = new Padding(34, 28, 34, 24),
+            RowCount = 12,
             ColumnCount = 3,
-            RowCount = 13
+            BackColor = Page
         };
-        rightPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
-        rightPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        rightPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
-        root.Panel2.Controls.Add(rightPanel);
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
 
-        for (var i = 0; i < 10; i++)
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        editor.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+
+        var header = new Label
         {
-            rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        }
+            Text = "Set Up A Provider",
+            Dock = DockStyle.Fill,
+            ForeColor = TextPrimary,
+            Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        editor.Controls.Add(header, 0, 0);
+        editor.SetColumnSpan(header, 3);
 
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        StyleCombo(_presetBox);
+        _presetBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _presetBox.Items.AddRange(ProviderPreset.All.Cast<object>().ToArray());
+        _presetBox.SelectedIndexChanged += (_, _) => ApplySelectedPreset();
+        AddLabeledControl(editor, "Provider", _presetBox, 1);
 
-        AddHeader(rightPanel);
-        AddLabeledControl(rightPanel, "Profile name", _profileNameBox, 1);
-        AddLabeledControl(rightPanel, "Provider name", _providerNameBox, 2);
-        AddLabeledControl(rightPanel, "Base URL", _baseUrlBox, 3);
-        AddLabeledControl(rightPanel, "API key", _apiKeyBox, 4);
-        AddLabeledControl(rightPanel, "Model", _modelBox, 5);
-
-        _profileNameBox.PlaceholderText = "my-deepseek-profile";
+        StyleTextBox(_providerNameBox);
         _providerNameBox.PlaceholderText = "DeepSeek, OpenRouter, LocalAI, etc.";
+        AddLabeledControl(editor, "Display name", _providerNameBox, 2);
+
+        StyleTextBox(_baseUrlBox);
         _baseUrlBox.PlaceholderText = "https://api.example.com/v1";
-        _apiKeyBox.PlaceholderText = "Paste key only when saving or fetching models";
+        AddLabeledControl(editor, "Base URL", _baseUrlBox, 3);
+
+        StyleTextBox(_apiKeyBox);
+        _apiKeyBox.PlaceholderText = "Paste API key here to save or fetch models";
         _apiKeyBox.UseSystemPasswordChar = true;
+        AddLabeledControl(editor, "API key", _apiKeyBox, 4);
 
-        _modelBox.DropDownStyle = ComboBoxStyle.DropDown;
-        _modelBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
-        _modelBox.AutoCompleteSource = AutoCompleteSource.ListItems;
-        _modelBox.Items.AddRange(new object[] { "gpt-5.5", "gpt-5.4", "deepseek-v4-flash", "deepseek-v4-pro" });
-
-        var saveKeyButton = new Button
-        {
-            Text = "Save Key",
-            Dock = DockStyle.Fill
-        };
+        var saveKeyButton = CreateButton("Save key", accent: false);
         saveKeyButton.Click += (_, _) => SaveKeyOnly();
-        rightPanel.Controls.Add(saveKeyButton, 2, 4);
+        editor.Controls.Add(saveKeyButton, 2, 4);
 
-        var fetchButton = new Button
-        {
-            Text = "Fetch Models",
-            Dock = DockStyle.Fill
-        };
+        StyleTextBox(_modelsBox);
+        _modelsBox.Multiline = true;
+        _modelsBox.ScrollBars = ScrollBars.Vertical;
+        _modelsBox.PlaceholderText = "One model per line. DeepSeek fills this automatically.";
+        AddLabeledControl(editor, "Models to add", _modelsBox, 5);
+
+        var fetchButton = CreateButton("Fetch models", accent: false);
         fetchButton.Click += async (_, _) => await FetchModelsAsync();
-        rightPanel.Controls.Add(fetchButton, 2, 5);
-
-        var contextLabel = new Label
-        {
-            Text = "Context window",
-            TextAlign = ContentAlignment.MiddleLeft,
-            Dock = DockStyle.Fill
-        };
-        rightPanel.Controls.Add(contextLabel, 0, 6);
+        editor.Controls.Add(fetchButton, 2, 5);
 
         var contextPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
+            WrapContents = false,
+            Padding = new Padding(0, 6, 0, 0),
+            BackColor = Page
         };
-        _contextEnabledBox.Text = "Set";
+        _contextEnabledBox.Text = "Set a context window";
         _contextEnabledBox.AutoSize = true;
+        _contextEnabledBox.ForeColor = TextPrimary;
         _contextEnabledBox.CheckedChanged += (_, _) => _contextWindowBox.Enabled = _contextEnabledBox.Checked;
         _contextWindowBox.Width = 160;
         _contextWindowBox.Minimum = 1;
@@ -164,75 +210,122 @@ internal sealed class ProfileManagerForm : Form
         _contextWindowBox.Enabled = false;
         contextPanel.Controls.Add(_contextEnabledBox);
         contextPanel.Controls.Add(_contextWindowBox);
-        rightPanel.Controls.Add(contextPanel, 1, 6);
+        AddLabeledControl(editor, "Context", contextPanel, 6);
 
-        AddLabeledControl(rightPanel, "Reasoning effort", _reasoningEffortBox, 7);
+        StyleCombo(_reasoningEffortBox);
         _reasoningEffortBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        _reasoningEffortBox.Items.AddRange(new object[] { "", "none", "minimal", "low", "medium", "high", "xhigh" });
+        _reasoningEffortBox.Items.AddRange(new object[] { "Auto", "none", "minimal", "low", "medium", "high", "xhigh" });
+        _reasoningEffortBox.SelectedIndex = 0;
+        AddLabeledControl(editor, "Reasoning effort", _reasoningEffortBox, 7);
 
-        AddLabeledControl(rightPanel, "Reasoning summaries", _reasoningSummariesBox, 8);
+        StyleCombo(_reasoningSummariesBox);
         _reasoningSummariesBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _reasoningSummariesBox.Items.AddRange(new object[] { "Auto", "Yes", "No" });
         _reasoningSummariesBox.SelectedIndex = 0;
+        AddLabeledControl(editor, "Reasoning summaries", _reasoningSummariesBox, 8);
 
         _secretStatusLabel.Dock = DockStyle.Fill;
-        _secretStatusLabel.ForeColor = Color.DimGray;
-        rightPanel.Controls.Add(_secretStatusLabel, 1, 9);
-
-        var note = new Label
-        {
-            Text = "Keys are saved in Windows Credential Manager. The Codex config gets an env var name, never the key itself.",
-            Dock = DockStyle.Fill,
-            ForeColor = Color.DimGray
-        };
-        rightPanel.Controls.Add(note, 1, 10);
-        rightPanel.SetColumnSpan(note, 2);
+        _secretStatusLabel.ForeColor = TextMuted;
+        _secretStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
+        editor.Controls.Add(_secretStatusLabel, 1, 9);
+        editor.SetColumnSpan(_secretStatusLabel, 2);
 
         _statusLabel.Dock = DockStyle.Fill;
-        _statusLabel.ForeColor = Color.DimGray;
-        rightPanel.Controls.Add(_statusLabel, 1, 11);
-        rightPanel.SetColumnSpan(_statusLabel, 2);
+        _statusLabel.ForeColor = TextMuted;
+        editor.Controls.Add(_statusLabel, 1, 10);
+        editor.SetColumnSpan(_statusLabel, 2);
 
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false
+            WrapContents = false,
+            BackColor = Page
         };
-        var closeButton = new Button { Text = "Close", Width = 100, Height = 30 };
+        var closeButton = CreateButton("Close", accent: false);
         closeButton.Click += (_, _) => Close();
-        var saveButton = new Button { Text = "Save Profile", Width = 120, Height = 30 };
-        saveButton.Click += (_, _) => SaveProfile();
+        var saveButton = CreateButton("Save provider", accent: true);
+        saveButton.Width = 150;
+        saveButton.Click += (_, _) => SaveProviderProfiles();
         footer.Controls.Add(closeButton);
         footer.Controls.Add(saveButton);
-        rightPanel.Controls.Add(footer, 0, 12);
-        rightPanel.SetColumnSpan(footer, 3);
+        editor.Controls.Add(footer, 0, 11);
+        editor.SetColumnSpan(footer, 3);
+
+        return editor;
     }
 
-    private static void AddHeader(TableLayoutPanel panel)
+    private void DrawProfileItem(object? sender, DrawItemEventArgs e)
     {
-        var title = new Label
+        if (e.Index < 0)
         {
-            Text = "OpenAI-Compatible Profile",
-            Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 15F, FontStyle.Bold)
-        };
-        panel.Controls.Add(title, 0, 0);
-        panel.SetColumnSpan(title, 3);
+            return;
+        }
+
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        var bounds = e.Bounds;
+        using var background = new SolidBrush(selected ? Color.FromArgb(30, 41, 59) : Sidebar);
+        e.Graphics.FillRectangle(background, bounds);
+
+        if (_profilesList.Items[e.Index] is not CodexProfile profile)
+        {
+            return;
+        }
+
+        var titleRect = new Rectangle(bounds.Left + 12, bounds.Top + 8, bounds.Width - 24, 20);
+        var subtitleRect = new Rectangle(bounds.Left + 12, bounds.Top + 29, bounds.Width - 24, 18);
+        TextRenderer.DrawText(e.Graphics, profile.ProfileName, new Font(Font, FontStyle.Bold), titleRect, Color.White, TextFormatFlags.EndEllipsis);
+        TextRenderer.DrawText(e.Graphics, profile.Model ?? profile.ProviderName ?? profile.ProviderId, Font, subtitleRect, SidebarMuted, TextFormatFlags.EndEllipsis);
     }
 
     private static void AddLabeledControl(TableLayoutPanel panel, string labelText, Control control, int row)
     {
-        panel.Controls.Add(new Label
+        var label = new Label
         {
             Text = labelText,
             TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = TextMuted,
             Dock = DockStyle.Fill
-        }, 0, row);
+        };
+        panel.Controls.Add(label, 0, row);
 
         control.Dock = DockStyle.Fill;
         panel.Controls.Add(control, 1, row);
-        panel.SetColumnSpan(control, 1);
+    }
+
+    private static Button CreateButton(string text, bool accent)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Width = 136,
+            Height = 34,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = accent ? Accent : Color.White,
+            ForeColor = accent ? Color.White : TextPrimary,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(5),
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderSize = accent ? 0 : 1;
+        button.FlatAppearance.BorderColor = Border;
+        return button;
+    }
+
+    private static void StyleTextBox(TextBox textBox)
+    {
+        textBox.BorderStyle = BorderStyle.FixedSingle;
+        textBox.BackColor = Color.White;
+        textBox.ForeColor = TextPrimary;
+        textBox.Margin = new Padding(0, 6, 12, 6);
+    }
+
+    private static void StyleCombo(ComboBox comboBox)
+    {
+        comboBox.FlatStyle = FlatStyle.Flat;
+        comboBox.BackColor = Color.White;
+        comboBox.ForeColor = TextPrimary;
+        comboBox.Margin = new Padding(0, 6, 12, 6);
     }
 
     private void ReloadProfiles(string? selectProfileName = null)
@@ -246,7 +339,7 @@ internal sealed class ProfileManagerForm : Form
 
         if (_profiles.Count == 0)
         {
-            NewProfile();
+            NewProviderSetup();
             return;
         }
 
@@ -255,22 +348,44 @@ internal sealed class ProfileManagerForm : Form
         _profilesList.SelectedItem = selected ?? _profiles[0];
     }
 
-    private void NewProfile()
+    private void NewProviderSetup()
     {
+        _isLoading = true;
         _profilesList.ClearSelected();
         _loadedProviderId = null;
         _loadedEnvKey = null;
-        _profileNameBox.Text = string.Empty;
-        _providerNameBox.Text = string.Empty;
-        _baseUrlBox.Text = string.Empty;
+        _presetBox.SelectedIndex = 0;
+        _isLoading = false;
+        ApplySelectedPreset();
+        _statusLabel.Text = "Choose DeepSeek for the two built-in DeepSeek model profiles, or choose Custom for any OpenAI-compatible API.";
+    }
+
+    private void ApplySelectedPreset()
+    {
+        if (_isLoading || _presetBox.SelectedItem is not ProviderPreset preset)
+        {
+            return;
+        }
+
+        _loadedProviderId = preset.IsCustom ? null : preset.ProviderId;
+        _loadedEnvKey = preset.EnvKey;
+        _providerNameBox.Text = preset.ProviderName;
+        _baseUrlBox.Text = preset.BaseUrl;
         _apiKeyBox.Text = string.Empty;
-        _modelBox.Text = string.Empty;
-        _contextEnabledBox.Checked = false;
-        _contextWindowBox.Value = 1_000_000;
+        _modelsBox.Text = string.Join(Environment.NewLine, preset.Models);
+        _contextEnabledBox.Checked = preset.ContextWindow.HasValue;
+        _contextWindowBox.Enabled = preset.ContextWindow.HasValue;
+        _contextWindowBox.Value = Math.Clamp(preset.ContextWindow ?? 1_000_000, 1, 100_000_000);
         _reasoningEffortBox.SelectedIndex = 0;
         _reasoningSummariesBox.SelectedIndex = 0;
-        _secretStatusLabel.Text = "No saved key for this new provider yet.";
-        _statusLabel.Text = "Create a profile by entering a profile name, base URL, API key, and model.";
+        _secretStatusLabel.Text = preset.IsCustom
+            ? "Paste a key when saving, or leave it blank if this provider does not need one."
+            : WindowsCredentialStore.HasSecret(preset.ProviderId)
+                ? "A key is already saved for this provider."
+                : "Paste your API key once. It will be saved in Windows Credential Manager.";
+        _statusLabel.Text = preset.DisplayName == "DeepSeek"
+            ? "DeepSeek setup will create both deepseek-v4-pro and deepseek-v4-flash profiles."
+            : "Custom providers can use typed model ids or fetched /models results.";
     }
 
     private void LoadSelectedProfile()
@@ -280,32 +395,51 @@ internal sealed class ProfileManagerForm : Form
             return;
         }
 
+        _isLoading = true;
+        var preset = ProviderPreset.All.FirstOrDefault(item =>
+            item.ProviderId.Equals(profile.ProviderId, StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrWhiteSpace(profile.BaseUrl) && item.BaseUrl.Equals(profile.BaseUrl, StringComparison.OrdinalIgnoreCase)))
+            ?? ProviderPreset.All.First(item => item.IsCustom);
+        _presetBox.SelectedItem = preset;
+        _isLoading = false;
+
         _loadedProviderId = profile.ProviderId;
         _loadedEnvKey = profile.EnvKey;
-        _profileNameBox.Text = profile.ProfileName;
         _providerNameBox.Text = profile.ProviderName ?? profile.ProviderId;
         _baseUrlBox.Text = profile.BaseUrl ?? string.Empty;
         _apiKeyBox.Text = string.Empty;
-        _modelBox.Text = profile.Model ?? string.Empty;
-        _contextEnabledBox.Checked = profile.ContextWindow.HasValue;
-        _contextWindowBox.Enabled = profile.ContextWindow.HasValue;
-        _contextWindowBox.Value = Math.Clamp(profile.ContextWindow ?? 1_000_000, 1, 100_000_000);
-        _reasoningEffortBox.SelectedItem = profile.ReasoningEffort ?? string.Empty;
 
-        _reasoningSummariesBox.SelectedIndex = profile.SupportsReasoningSummaries switch
-        {
-            true => 1,
-            false => 2,
-            _ => 0
-        };
+        var providerProfiles = _profiles
+            .Where(item => item.ProviderId.Equals(profile.ProviderId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        _modelsBox.Text = string.Join(
+            Environment.NewLine,
+            providerProfiles.Select(item => item.Model).Where(model => !string.IsNullOrWhiteSpace(model)).Distinct(StringComparer.OrdinalIgnoreCase));
+
+        var context = providerProfiles.Select(item => item.ContextWindow).FirstOrDefault(value => value.HasValue);
+        _contextEnabledBox.Checked = context.HasValue;
+        _contextWindowBox.Enabled = context.HasValue;
+        _contextWindowBox.Value = Math.Clamp(context ?? 1_000_000, 1, 100_000_000);
+
+        var efforts = providerProfiles
+            .Select(item => item.ReasoningEffort)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        _reasoningEffortBox.SelectedItem = efforts.Count == 1 ? efforts[0] : "Auto";
+
+        var summaries = providerProfiles.Select(item => item.SupportsReasoningSummaries).Distinct().ToList();
+        _reasoningSummariesBox.SelectedIndex = summaries.Count == 1
+            ? summaries[0] switch { true => 1, false => 2, _ => 0 }
+            : 0;
 
         var hasSecret = !profile.IsBuiltInOpenAI && WindowsCredentialStore.HasSecret(profile.ProviderId);
         _secretStatusLabel.Text = profile.IsBuiltInOpenAI
-            ? "This profile uses Codex's built-in OpenAI/ChatGPT authentication."
+            ? "This profile uses Codex's built-in OpenAI/ChatGPT login."
             : hasSecret
                 ? "A key is saved in Windows Credential Manager for this provider."
-                : "No key saved yet. Paste one and click Save Key or Save Profile.";
-        _statusLabel.Text = string.Empty;
+                : "No key saved yet. Paste one and click Save key or Save provider.";
+        _statusLabel.Text = "Reasoning effort is not part of the standard OpenAI-compatible model list, so it stays as an optional default.";
     }
 
     private void SaveKeyOnly()
@@ -341,20 +475,10 @@ internal sealed class ProfileManagerForm : Form
                 : _apiKeyBox.Text.Trim();
 
             var models = await ModelFetcher.FetchAsync(_baseUrlBox.Text.Trim(), key, CancellationToken.None);
-            _modelBox.Items.Clear();
-            foreach (var model in models)
-            {
-                _modelBox.Items.Add(model);
-            }
-
-            if (models.Count > 0 && string.IsNullOrWhiteSpace(_modelBox.Text))
-            {
-                _modelBox.Text = models[0];
-            }
-
+            _modelsBox.Text = string.Join(Environment.NewLine, models);
             _statusLabel.Text = models.Count == 0
                 ? "The provider responded, but no model ids were found."
-                : $"Fetched {models.Count} model(s).";
+                : $"Fetched {models.Count} model id(s). Choose the lines you want to save.";
         }
         catch (Exception ex)
         {
@@ -366,20 +490,20 @@ internal sealed class ProfileManagerForm : Form
         }
     }
 
-    private void SaveProfile()
+    private void SaveProviderProfiles()
     {
         try
         {
-            var definition = BuildDefinition();
+            var definitions = BuildDefinitions();
             if (!string.IsNullOrWhiteSpace(_apiKeyBox.Text))
             {
-                WindowsCredentialStore.WriteSecret(definition.ProviderId, _apiKeyBox.Text.Trim());
+                WindowsCredentialStore.WriteSecret(definitions[0].ProviderId, _apiKeyBox.Text.Trim());
                 _apiKeyBox.Text = string.Empty;
             }
 
-            _configManager.UpsertProfile(definition);
-            _statusLabel.Text = $"Saved profile '{definition.ProfileName}'.";
-            ReloadProfiles(definition.ProfileName);
+            _configManager.UpsertProfiles(definitions);
+            _statusLabel.Text = $"Saved {definitions.Count} profile(s) for {definitions[0].ProviderName}.";
+            ReloadProfiles(definitions[0].ProfileName);
         }
         catch (Exception ex)
         {
@@ -414,7 +538,12 @@ internal sealed class ProfileManagerForm : Form
         try
         {
             _configManager.DeleteProfile(profile);
-            WindowsCredentialStore.DeleteSecret(profile.ProviderId);
+            if (!_profiles.Any(item =>
+                    !item.ProfileName.Equals(profile.ProfileName, StringComparison.OrdinalIgnoreCase) &&
+                    item.ProviderId.Equals(profile.ProviderId, StringComparison.OrdinalIgnoreCase)))
+            {
+                WindowsCredentialStore.DeleteSecret(profile.ProviderId);
+            }
             ReloadProfiles();
         }
         catch (Exception ex)
@@ -423,31 +552,23 @@ internal sealed class ProfileManagerForm : Form
         }
     }
 
-    private ProfileDefinition BuildDefinition()
+    private List<ProfileDefinition> BuildDefinitions()
     {
-        var profileName = _profileNameBox.Text.Trim();
         var providerName = _providerNameBox.Text.Trim();
         var baseUrl = _baseUrlBox.Text.Trim();
-        var model = _modelBox.Text.Trim();
         var providerId = ResolveProviderId();
-        var envKey = providerId.Equals(_loadedProviderId, StringComparison.OrdinalIgnoreCase) &&
-                     !string.IsNullOrWhiteSpace(_loadedEnvKey)
-            ? _loadedEnvKey
-            : CodexConfigManager.MakeEnvKey(providerId);
-
-        if (string.IsNullOrWhiteSpace(profileName))
-        {
-            throw new InvalidOperationException("Profile name is required.");
-        }
+        var preset = GetActivePreset();
+        var envKey = ResolveEnvKey(providerId, preset);
+        var models = ParseModels();
 
         if (string.IsNullOrWhiteSpace(providerName))
         {
-            throw new InvalidOperationException("Provider name is required.");
+            throw new InvalidOperationException("Display name is required.");
         }
 
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
-            throw new InvalidOperationException("Base URL is required for a custom OpenAI-compatible provider.");
+            throw new InvalidOperationException("Base URL is required for an OpenAI-compatible provider.");
         }
 
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -455,40 +576,103 @@ internal sealed class ProfileManagerForm : Form
             throw new InvalidOperationException("Base URL must be a valid http or https URL.");
         }
 
-        if (string.IsNullOrWhiteSpace(model))
+        if (models.Count == 0)
         {
-            throw new InvalidOperationException("Model is required. You can type any model id, for example gpt-5.5 or gpt-5.4.");
+            throw new InvalidOperationException("At least one model id is required so Codex has a profile to open.");
         }
 
-        return new ProfileDefinition
+        return models.Select(model => new ProfileDefinition
         {
-            ProfileName = profileName,
+            ProfileName = CodexConfigManager.MakeProfileName(providerId, model),
             ProviderId = providerId,
             ProviderName = providerName,
             BaseUrl = baseUrl,
             EnvKey = envKey,
             Model = model,
             ContextWindow = _contextEnabledBox.Checked ? (int)_contextWindowBox.Value : null,
-            ReasoningEffort = string.IsNullOrWhiteSpace((string?)_reasoningEffortBox.SelectedItem) ? null : (string)_reasoningEffortBox.SelectedItem,
-            SupportsReasoningSummaries = _reasoningSummariesBox.SelectedIndex switch
-            {
-                1 => true,
-                2 => false,
-                _ => null
-            }
-        };
+            ReasoningEffort = ResolveReasoningEffort(providerId, model, preset),
+            SupportsReasoningSummaries = ResolveReasoningSummaries(preset)
+        }).ToList();
+    }
+
+    private List<string> ParseModels()
+    {
+        return _modelsBox.Text
+            .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private string ResolveProviderId()
     {
-        if (!string.IsNullOrWhiteSpace(_loadedProviderId) &&
-            _profilesList.SelectedItem is CodexProfile selected &&
-            selected.ProfileName.Equals(_profileNameBox.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+        var preset = GetActivePreset();
+        if (preset is not null && !preset.IsCustom)
+        {
+            return preset.ProviderId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_loadedProviderId) && preset?.IsCustom == true)
         {
             return _loadedProviderId;
         }
 
-        return CodexConfigManager.MakeProviderId(_profileNameBox.Text);
+        return CodexConfigManager.MakeProviderId(_providerNameBox.Text);
+    }
+
+    private string ResolveEnvKey(string providerId, ProviderPreset? preset)
+    {
+        if (!string.IsNullOrWhiteSpace(_loadedEnvKey) &&
+            providerId.Equals(_loadedProviderId, StringComparison.OrdinalIgnoreCase))
+        {
+            return _loadedEnvKey;
+        }
+
+        if (preset is not null && !preset.IsCustom)
+        {
+            return preset.EnvKey;
+        }
+
+        return CodexConfigManager.MakeEnvKey(providerId);
+    }
+
+    private string? ResolveReasoningEffort(string providerId, string model, ProviderPreset? preset)
+    {
+        var selected = _reasoningEffortBox.SelectedItem as string;
+        if (!string.IsNullOrWhiteSpace(selected) && selected != "Auto")
+        {
+            return selected;
+        }
+
+        if (providerId.Equals("deepseek", StringComparison.OrdinalIgnoreCase))
+        {
+            if (model.Contains("flash", StringComparison.OrdinalIgnoreCase))
+            {
+                return "low";
+            }
+
+            if (model.Contains("pro", StringComparison.OrdinalIgnoreCase))
+            {
+                return "high";
+            }
+        }
+
+        return preset?.ReasoningEffort;
+    }
+
+    private bool? ResolveReasoningSummaries(ProviderPreset? preset)
+    {
+        return _reasoningSummariesBox.SelectedIndex switch
+        {
+            1 => true,
+            2 => false,
+            _ => preset?.SupportsReasoningSummaries
+        };
+    }
+
+    private ProviderPreset? GetActivePreset()
+    {
+        return _presetBox.SelectedItem as ProviderPreset;
     }
 
     private void ShowError(string message)

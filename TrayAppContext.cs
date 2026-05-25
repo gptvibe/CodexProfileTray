@@ -7,14 +7,16 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _openMenu = new("Open Codex With Profile");
     private readonly CodexLauncher _launcher;
+    private readonly Icon _appIcon;
 
     public TrayAppContext()
     {
         _launcher = new CodexLauncher(_configManager);
+        _appIcon = AppIcons.GetAppIcon();
         _notifyIcon = new NotifyIcon
         {
             Text = "Codex Profile Tray",
-            Icon = SystemIcons.Application,
+            Icon = _appIcon,
             Visible = true,
             ContextMenuStrip = BuildContextMenu()
         };
@@ -28,6 +30,7 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _appIcon.Dispose();
         }
 
         base.Dispose(disposing);
@@ -38,7 +41,7 @@ internal sealed class TrayAppContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Opening += (_, _) => RefreshOpenMenu();
 
-        var manageProfiles = new ToolStripMenuItem("Manage Profiles...", null, (_, _) => ShowProfileManager());
+        var manageProfiles = new ToolStripMenuItem("Manage Providers...", null, (_, _) => ShowProfileManager());
         var chooseFolder = new ToolStripMenuItem("Choose Project Folder...", null, (_, _) => ChooseWorkspace());
         var openConfig = new ToolStripMenuItem("Open Codex Config", null, (_, _) => OpenConfig());
         var exit = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());

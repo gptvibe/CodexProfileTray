@@ -69,47 +69,75 @@ internal sealed class CodexConfigManager
 
     public void UpsertProfile(ProfileDefinition definition)
     {
+        UpsertProfiles(new[] { definition });
+    }
+
+    public void UpsertProfiles(IReadOnlyList<ProfileDefinition> definitions)
+    {
         Directory.CreateDirectory(CodexHome);
+        if (definitions.Count == 0)
+        {
+            return;
+        }
+
         var lines = File.Exists(ConfigPath)
             ? File.ReadAllLines(ConfigPath).ToList()
             : new List<string>();
 
         BackupConfigIfExists();
-        RemoveSection(lines, $"model_providers.{definition.ProviderId}");
-        RemoveSection(lines, $"profiles.{definition.ProfileName}");
+        foreach (var providerId in definitions.Select(definition => definition.ProviderId).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            RemoveSection(lines, $"model_providers.{providerId}");
+        }
+
+        foreach (var definition in definitions)
+        {
+            RemoveSection(lines, $"profiles.{definition.ProfileName}");
+        }
 
         if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
         {
             lines.Add(string.Empty);
         }
 
-        lines.Add("# Added by Codex Profile Tray.");
-        lines.Add($"[model_providers.{QuoteTomlKey(definition.ProviderId)}]");
-        lines.Add($"name = {QuoteTomlString(definition.ProviderName)}");
-        lines.Add($"base_url = {QuoteTomlString(definition.BaseUrl)}");
-        lines.Add($"env_key = {QuoteTomlString(definition.EnvKey)}");
-        lines.Add($"env_key_instructions = {QuoteTomlString($"Set {definition.EnvKey} to your API key.")}");
-        lines.Add("request_max_retries = 3");
-        lines.Add("stream_max_retries = 2");
-        lines.Add("stream_idle_timeout_ms = 600000");
-        lines.Add(string.Empty);
-        lines.Add($"[profiles.{QuoteTomlKey(definition.ProfileName)}]");
-        lines.Add($"model_provider = {QuoteTomlString(definition.ProviderId)}");
-        lines.Add($"model = {QuoteTomlString(definition.Model)}");
-
-        if (!string.IsNullOrWhiteSpace(definition.ReasoningEffort))
+        foreach (var provider in definitions
+                     .GroupBy(definition => definition.ProviderId, StringComparer.OrdinalIgnoreCase)
+                     .Select(group => group.First()))
         {
-            lines.Add($"model_reasoning_effort = {QuoteTomlString(definition.ReasoningEffort)}");
+            lines.Add("# Added by Codex Profile Tray.");
+            lines.Add($"[model_providers.{QuoteTomlKey(provider.ProviderId)}]");
+            lines.Add($"name = {QuoteTomlString(provider.ProviderName)}");
+            lines.Add($"base_url = {QuoteTomlString(provider.BaseUrl)}");
+            lines.Add($"env_key = {QuoteTomlString(provider.EnvKey)}");
+            lines.Add($"env_key_instructions = {QuoteTomlString($"Set {provider.EnvKey} to your API key.")}");
+            lines.Add("request_max_retries = 3");
+            lines.Add("stream_max_retries = 2");
+            lines.Add("stream_idle_timeout_ms = 600000");
+            lines.Add(string.Empty);
         }
 
-        if (definition.ContextWindow.HasValue)
+        foreach (var definition in definitions)
         {
-            lines.Add($"model_context_window = {definition.ContextWindow.Value.ToString(CultureInfo.InvariantCulture)}");
-        }
+            lines.Add($"[profiles.{QuoteTomlKey(definition.ProfileName)}]");
+            lines.Add($"model_provider = {QuoteTomlString(definition.ProviderId)}");
+            lines.Add($"model = {QuoteTomlString(definition.Model)}");
 
-        if (definition.SupportsReasoningSummaries.HasValue)
-        {
-            lines.Add($"model_supports_reasoning_summaries = {definition.SupportsReasoningSummaries.Value.ToString().ToLowerInvariant()}");
+            if (!string.IsNullOrWhiteSpace(definition.ReasoningEffort))
+            {
+                lines.Add($"model_reasoning_effort = {QuoteTomlString(definition.ReasoningEffort)}");
+            }
+
+            if (definition.ContextWindow.HasValue)
+            {
+                lines.Add($"model_context_window = {definition.ContextWindow.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (definition.SupportsReasoningSummaries.HasValue)
+            {
+                lines.Add($"model_supports_reasoning_summaries = {definition.SupportsReasoningSummaries.Value.ToString().ToLowerInvariant()}");
+            }
+
+            lines.Add(string.Empty);
         }
 
         File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
@@ -155,6 +183,22 @@ internal sealed class CodexConfigManager
         }
 
         return cleaned;
+    }
+
+    public static string MakeProfileName(string providerId, string model)
+    {
+        var modelSlug = Regex.Replace(model.Trim().ToLowerInvariant(), @"[^a-z0-9_\-]+", "-").Trim('-');
+        if (string.IsNullOrWhiteSpace(modelSlug))
+        {
+            modelSlug = "model";
+        }
+
+        if (modelSlug.StartsWith(providerId, StringComparison.OrdinalIgnoreCase))
+        {
+            return modelSlug;
+        }
+
+        return $"{providerId}-{modelSlug}";
     }
 
     public static string MakeEnvKey(string providerId)
