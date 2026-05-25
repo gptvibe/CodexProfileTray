@@ -17,7 +17,7 @@ internal sealed class ProfileManagerForm : Form
     private readonly TextBox _providerNameBox = new();
     private readonly TextBox _baseUrlBox = new();
     private readonly TextBox _apiKeyBox = new();
-    private readonly TextBox _modelsBox = new();
+    private readonly ComboBox _modelBox = new();
     private readonly CheckBox _contextEnabledBox = new();
     private readonly NumericUpDown _contextWindowBox = new();
     private readonly ComboBox _reasoningEffortBox = new();
@@ -138,11 +138,11 @@ internal sealed class ProfileManagerForm : Form
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
         editor.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
 
@@ -180,11 +180,11 @@ internal sealed class ProfileManagerForm : Form
         saveKeyButton.Click += (_, _) => SaveKeyOnly();
         editor.Controls.Add(saveKeyButton, 2, 4);
 
-        StyleTextBox(_modelsBox);
-        _modelsBox.Multiline = true;
-        _modelsBox.ScrollBars = ScrollBars.Vertical;
-        _modelsBox.PlaceholderText = "One model id per line, or fetch from the provider";
-        AddLabeledControl(editor, "Models", _modelsBox, 5);
+        StyleCombo(_modelBox);
+        _modelBox.DropDownStyle = ComboBoxStyle.DropDown;
+        _modelBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+        _modelBox.AutoCompleteSource = AutoCompleteSource.ListItems;
+        AddLabeledControl(editor, "Model", _modelBox, 5);
 
         var fetchButton = CreateButton("Fetch", accent: false);
         fetchButton.Click += async (_, _) => await FetchModelsAsync();
@@ -244,9 +244,9 @@ internal sealed class ProfileManagerForm : Form
         };
         var closeButton = CreateButton("Close", accent: false);
         closeButton.Click += (_, _) => Close();
-        var saveButton = CreateButton("Save provider", accent: true);
+        var saveButton = CreateButton("Save profile", accent: true);
         saveButton.Width = 150;
-        saveButton.Click += (_, _) => SaveProviderProfiles();
+        saveButton.Click += (_, _) => SaveProfile();
         footer.Controls.Add(closeButton);
         footer.Controls.Add(saveButton);
         editor.Controls.Add(footer, 0, 11);
@@ -373,7 +373,7 @@ internal sealed class ProfileManagerForm : Form
         _providerNameBox.Text = preset.ProviderName;
         _baseUrlBox.Text = preset.BaseUrl;
         _apiKeyBox.Text = string.Empty;
-        _modelsBox.Text = string.Join(Environment.NewLine, preset.Models);
+        SetModelChoices(preset.Models);
         _baseUrlBox.ReadOnly = !preset.IsCustom;
         _baseUrlBox.BackColor = preset.IsCustom ? Color.White : Color.FromArgb(241, 245, 249);
         _contextEnabledBox.Checked = preset.ContextWindow.HasValue;
@@ -386,7 +386,7 @@ internal sealed class ProfileManagerForm : Form
             : WindowsCredentialStore.HasSecret(preset.ProviderId)
                 ? "A key is already saved for this provider."
                 : "Paste your API key once. It will be saved in Windows Credential Manager.";
-        _statusLabel.Text = "Paste an API key, then click Fetch to load model ids from this provider.";
+        _statusLabel.Text = "Choose a model, choose reasoning effort, then save the profile.";
     }
 
     private void LoadSelectedProfile()
@@ -415,34 +415,35 @@ internal sealed class ProfileManagerForm : Form
         var providerProfiles = _profiles
             .Where(item => item.ProviderId.Equals(profile.ProviderId, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        _modelsBox.Text = string.Join(
-            Environment.NewLine,
-            providerProfiles.Select(item => item.Model).Where(model => !string.IsNullOrWhiteSpace(model)).Distinct(StringComparer.OrdinalIgnoreCase));
+        SetModelChoices(providerProfiles
+            .Select(item => item.Model)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)!);
+        _modelBox.Text = profile.Model ?? string.Empty;
 
-        var context = providerProfiles.Select(item => item.ContextWindow).FirstOrDefault(value => value.HasValue);
+        var context = profile.ContextWindow;
         _contextEnabledBox.Checked = context.HasValue;
         _contextWindowBox.Enabled = context.HasValue;
         _contextWindowBox.Value = Math.Clamp(context ?? 1_000_000, 1, 100_000_000);
 
-        var efforts = providerProfiles
-            .Select(item => item.ReasoningEffort)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        _reasoningEffortBox.SelectedItem = efforts.Count == 1 ? efforts[0] : "Auto";
+        _reasoningEffortBox.SelectedItem = string.IsNullOrWhiteSpace(profile.ReasoningEffort)
+            ? "Auto"
+            : profile.ReasoningEffort;
 
-        var summaries = providerProfiles.Select(item => item.SupportsReasoningSummaries).Distinct().ToList();
-        _reasoningSummariesBox.SelectedIndex = summaries.Count == 1
-            ? summaries[0] switch { true => 1, false => 2, _ => 0 }
-            : 0;
+        _reasoningSummariesBox.SelectedIndex = profile.SupportsReasoningSummaries switch
+        {
+            true => 1,
+            false => 2,
+            _ => 0
+        };
 
         var hasSecret = !profile.IsBuiltInOpenAI && WindowsCredentialStore.HasSecret(profile.ProviderId);
         _secretStatusLabel.Text = profile.IsBuiltInOpenAI
             ? "This profile uses Codex's built-in OpenAI/ChatGPT login."
             : hasSecret
                 ? "A key is saved in Windows Credential Manager for this provider."
-                : "No key saved yet. Paste one and click Save key or Save provider.";
-        _statusLabel.Text = "Reasoning effort is not part of the standard OpenAI-compatible model list, so it stays as an optional default.";
+                : "No key saved yet. Paste one and click Save key or Save profile.";
+        _statusLabel.Text = "Reasoning effort is saved with this model profile.";
     }
 
     private void SaveKeyOnly()
@@ -484,10 +485,10 @@ internal sealed class ProfileManagerForm : Form
             }
 
             var models = await ModelFetcher.FetchAsync(_baseUrlBox.Text.Trim(), key, CancellationToken.None);
-            _modelsBox.Text = string.Join(Environment.NewLine, models);
+            SetModelChoices(models);
             _statusLabel.Text = models.Count == 0
                 ? "The provider responded, but no model ids were found."
-                : $"Fetched {models.Count} model id(s). Choose the lines you want to save.";
+                : $"Fetched {models.Count} model id(s). Choose one, then save.";
         }
         catch (Exception ex)
         {
@@ -499,20 +500,20 @@ internal sealed class ProfileManagerForm : Form
         }
     }
 
-    private void SaveProviderProfiles()
+    private void SaveProfile()
     {
         try
         {
-            var definitions = BuildDefinitions();
+            var definition = BuildDefinition();
             if (!string.IsNullOrWhiteSpace(_apiKeyBox.Text))
             {
-                WindowsCredentialStore.WriteSecret(definitions[0].ProviderId, _apiKeyBox.Text.Trim());
+                WindowsCredentialStore.WriteSecret(definition.ProviderId, _apiKeyBox.Text.Trim());
                 _apiKeyBox.Text = string.Empty;
             }
 
-            _configManager.UpsertProfiles(definitions);
-            _statusLabel.Text = $"Saved {definitions.Count} profile(s) for {definitions[0].ProviderName}.";
-            ReloadProfiles(definitions[0].ProfileName);
+            _configManager.UpsertProfile(definition);
+            _statusLabel.Text = $"Saved {definition.ProfileName}.";
+            ReloadProfiles(definition.ProfileName);
         }
         catch (Exception ex)
         {
@@ -561,14 +562,14 @@ internal sealed class ProfileManagerForm : Form
         }
     }
 
-    private List<ProfileDefinition> BuildDefinitions()
+    private ProfileDefinition BuildDefinition()
     {
         var providerName = _providerNameBox.Text.Trim();
         var baseUrl = _baseUrlBox.Text.Trim();
         var providerId = ResolveProviderId();
         var preset = GetActivePreset();
         var envKey = ResolveEnvKey(providerId, preset);
-        var models = ParseModels();
+        var model = _modelBox.Text.Trim();
 
         if (string.IsNullOrWhiteSpace(providerName))
         {
@@ -585,32 +586,65 @@ internal sealed class ProfileManagerForm : Form
             throw new InvalidOperationException("Base URL must be a valid http or https URL.");
         }
 
-        if (models.Count == 0)
+        if (string.IsNullOrWhiteSpace(model))
         {
-            throw new InvalidOperationException("At least one model id is required so Codex has a profile to open.");
+            throw new InvalidOperationException("Choose or type a model id first.");
         }
 
-        return models.Select(model => new ProfileDefinition
+        var reasoningEffort = ResolveReasoningEffort(providerId, model, preset);
+
+        return new ProfileDefinition
         {
-            ProfileName = CodexConfigManager.MakeProfileName(providerId, model),
+            ProfileName = MakeProfileName(providerId, model, reasoningEffort),
             ProviderId = providerId,
             ProviderName = providerName,
             BaseUrl = baseUrl,
             EnvKey = envKey,
             Model = model,
             ContextWindow = _contextEnabledBox.Checked ? (int)_contextWindowBox.Value : null,
-            ReasoningEffort = ResolveReasoningEffort(providerId, model, preset),
+            ReasoningEffort = reasoningEffort,
             SupportsReasoningSummaries = ResolveReasoningSummaries(preset)
-        }).ToList();
+        };
     }
 
-    private List<string> ParseModels()
+    private static string MakeProfileName(string providerId, string model, string? reasoningEffort)
     {
-        return _modelsBox.Text
-            .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        var baseName = CodexConfigManager.MakeProfileName(providerId, model);
+        if (string.IsNullOrWhiteSpace(reasoningEffort))
+        {
+            return baseName;
+        }
+
+        return $"{baseName}-{reasoningEffort}";
+    }
+
+    private void SetModelChoices(IEnumerable<string?> models)
+    {
+        var current = _modelBox.Text.Trim();
+        var choices = models
             .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Select(model => model!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        _modelBox.Items.Clear();
+        foreach (var model in choices)
+        {
+            _modelBox.Items.Add(model);
+        }
+
+        if (!string.IsNullOrWhiteSpace(current) && choices.Contains(current, StringComparer.OrdinalIgnoreCase))
+        {
+            _modelBox.Text = current;
+        }
+        else if (choices.Count > 0)
+        {
+            _modelBox.Text = choices[0];
+        }
+        else
+        {
+            _modelBox.Text = string.Empty;
+        }
     }
 
     private string ResolveProviderId()

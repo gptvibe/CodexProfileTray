@@ -39,7 +39,9 @@ internal sealed class ProviderPreset
             ProviderId = "deepseek",
             ProviderName = "DeepSeek",
             BaseUrl = "https://api.deepseek.com",
-            EnvKey = "DEEPSEEK_API_KEY"
+            EnvKey = "DEEPSEEK_API_KEY",
+            Models = new[] { "deepseek-v4-flash", "deepseek-v4-pro" },
+            SupportsReasoningSummaries = false
         },
         new ProviderPreset
         {

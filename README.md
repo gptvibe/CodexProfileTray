@@ -30,10 +30,13 @@ Windows may show a SmartScreen warning because this is an unsigned open-source a
 3. Pick a provider from the dropdown.
 4. Paste your API key.
 5. Click **Fetch** to load model IDs from that provider.
-6. Keep the model IDs you want, one per line.
-7. Click **Save**.
+6. Choose one model.
+7. Choose a reasoning effort, or leave it on **Auto**.
+8. Click **Save**.
 
 For the built-in provider presets, the base URL is filled in automatically. You only need to paste the API key and fetch models.
+
+Some presets include common starter models before you fetch. For example, choosing DeepSeek shows `deepseek-v4-flash` and `deepseek-v4-pro` immediately.
 
 Use **Custom OpenAI-compatible API** only when the provider is not in the dropdown. In that case, enter the provider's base URL, for example:
 
@@ -41,7 +44,7 @@ Use **Custom OpenAI-compatible API** only when the provider is not in the dropdo
 https://api.example.com/v1
 ```
 
-The app writes a Codex profile for each model ID. That lets Codex launch with the provider/model combination you choose from the tray.
+The app writes one Codex profile for the selected provider, model, and reasoning effort. Repeat the save step if you want another model or another reasoning setting.
 
 ## Included Presets
 
