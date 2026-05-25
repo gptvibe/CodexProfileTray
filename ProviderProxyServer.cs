@@ -196,7 +196,18 @@ internal sealed class ProviderProxyServer : IDisposable
 
         await WriteJsonAsync(context, HttpStatusCode.OK, new
         {
-            models = Array.Empty<object>()
+            @object = "list",
+            data = models
+                .Where(model => !string.IsNullOrWhiteSpace(model))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(model => new
+                {
+                    id = model,
+                    @object = "model",
+                    created = 0,
+                    owned_by = settings.ProviderName
+                })
+                .ToArray()
         }, cancellationToken).ConfigureAwait(false);
     }
 

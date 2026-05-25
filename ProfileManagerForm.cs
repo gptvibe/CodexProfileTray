@@ -125,9 +125,11 @@ internal sealed class ProfileManagerForm : Form
     {
         var editor = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(44, 34, 44, 28),
-            RowCount = 12,
+            RowCount = 13,
             ColumnCount = 3,
             BackColor = Page
         };
@@ -136,17 +138,18 @@ internal sealed class ProfileManagerForm : Form
         editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
 
         editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
-        editor.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        editor.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
 
         var header = new Label
         {
@@ -159,42 +162,56 @@ internal sealed class ProfileManagerForm : Form
         editor.Controls.Add(header, 0, 0);
         editor.SetColumnSpan(header, 3);
 
+        var intro = new Label
+        {
+            Text = "Pick a provider preset first, then save the key and default model you want Codex Desktop to expose.",
+            Dock = DockStyle.Fill,
+            ForeColor = TextMuted,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
+        };
+        editor.Controls.Add(intro, 0, 1);
+        editor.SetColumnSpan(intro, 3);
+
         StyleCombo(_presetBox);
         _presetBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _presetBox.MaxDropDownItems = 10;
         _presetBox.Items.AddRange(ProviderPreset.All.Cast<object>().ToArray());
         _presetBox.SelectedIndexChanged += (_, _) => ApplySelectedPreset();
-        AddLabeledControl(editor, "Provider", _presetBox, 1, columnSpan: 2);
+        AddLabeledControl(editor, "Provider", _presetBox, 2, columnSpan: 2);
 
         StyleTextBox(_providerNameBox);
         _providerNameBox.PlaceholderText = "Provider display name";
-        AddLabeledControl(editor, "Display", _providerNameBox, 2, columnSpan: 2);
+        AddLabeledControl(editor, "Display", _providerNameBox, 3, columnSpan: 2);
 
         StyleTextBox(_baseUrlBox);
         _baseUrlBox.PlaceholderText = "https://api.example.com/v1";
-        AddLabeledControl(editor, "Base URL", _baseUrlBox, 3, columnSpan: 2);
+        AddLabeledControl(editor, "Base URL", _baseUrlBox, 4, columnSpan: 2);
 
         StyleTextBox(_apiKeyBox);
         _apiKeyBox.PlaceholderText = "Paste API key";
         _apiKeyBox.UseSystemPasswordChar = true;
-        AddLabeledControl(editor, "API key", _apiKeyBox, 4);
+        AddLabeledControl(editor, "API key", _apiKeyBox, 5);
 
         var saveKeyButton = CreateButton("Save key", accent: false);
         saveKeyButton.Click += (_, _) => SaveKeyOnly();
-        editor.Controls.Add(saveKeyButton, 2, 4);
+        editor.Controls.Add(saveKeyButton, 2, 5);
 
         StyleCombo(_modelBox);
         _modelBox.DropDownStyle = ComboBoxStyle.DropDown;
         _modelBox.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
         _modelBox.AutoCompleteSource = AutoCompleteSource.ListItems;
-        AddLabeledControl(editor, "Model", _modelBox, 5);
+        AddLabeledControl(editor, "Model", _modelBox, 6);
 
         var fetchButton = CreateButton("Fetch", accent: false);
         fetchButton.Click += async (_, _) => await FetchModelsAsync();
-        editor.Controls.Add(fetchButton, 2, 5);
+        editor.Controls.Add(fetchButton, 2, 6);
 
         var contextPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             Padding = new Padding(0, 8, 0, 0),
@@ -213,38 +230,43 @@ internal sealed class ProfileManagerForm : Form
         _contextWindowBox.Enabled = false;
         contextPanel.Controls.Add(_contextEnabledBox);
         contextPanel.Controls.Add(_contextWindowBox);
-        AddLabeledControl(editor, "Context", contextPanel, 6, columnSpan: 2);
+        AddLabeledControl(editor, "Context", contextPanel, 7, columnSpan: 2);
 
         StyleCombo(_reasoningEffortBox);
         _reasoningEffortBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _reasoningEffortBox.Items.AddRange(new object[] { "Auto", "none", "minimal", "low", "medium", "high", "xhigh" });
         _reasoningEffortBox.SelectedIndex = 0;
-        AddLabeledControl(editor, "Reasoning", _reasoningEffortBox, 7, columnSpan: 2);
+        AddLabeledControl(editor, "Reasoning", _reasoningEffortBox, 8, columnSpan: 2);
 
         StyleCombo(_reasoningSummariesBox);
         _reasoningSummariesBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _reasoningSummariesBox.Items.AddRange(new object[] { "Auto", "Yes", "No" });
         _reasoningSummariesBox.SelectedIndex = 0;
-        AddLabeledControl(editor, "Summaries", _reasoningSummariesBox, 8, columnSpan: 2);
+        AddLabeledControl(editor, "Summaries", _reasoningSummariesBox, 9, columnSpan: 2);
 
+        _secretStatusLabel.AutoSize = true;
         _secretStatusLabel.Dock = DockStyle.Fill;
         _secretStatusLabel.ForeColor = TextMuted;
         _secretStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
         _secretStatusLabel.Padding = new Padding(4, 0, 0, 0);
-        editor.Controls.Add(_secretStatusLabel, 1, 9);
+        editor.Controls.Add(_secretStatusLabel, 1, 10);
         editor.SetColumnSpan(_secretStatusLabel, 2);
 
+        _statusLabel.AutoSize = true;
         _statusLabel.Dock = DockStyle.Fill;
         _statusLabel.ForeColor = TextMuted;
         _statusLabel.Padding = new Padding(4, 0, 0, 0);
-        editor.Controls.Add(_statusLabel, 1, 10);
+        editor.Controls.Add(_statusLabel, 1, 11);
         editor.SetColumnSpan(_statusLabel, 2);
 
         var footer = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
+            Padding = new Padding(0, 8, 0, 0),
             BackColor = Page
         };
         var closeButton = CreateButton("Close", accent: false);
@@ -254,10 +276,17 @@ internal sealed class ProfileManagerForm : Form
         saveButton.Click += (_, _) => SaveProfile();
         footer.Controls.Add(closeButton);
         footer.Controls.Add(saveButton);
-        editor.Controls.Add(footer, 0, 11);
+        editor.Controls.Add(footer, 0, 12);
         editor.SetColumnSpan(footer, 3);
 
-        return editor;
+        var scrollHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor = Page
+        };
+        scrollHost.Controls.Add(editor);
+        return scrollHost;
     }
 
     private void DrawProfileItem(object? sender, DrawItemEventArgs e)
@@ -341,6 +370,7 @@ internal sealed class ProfileManagerForm : Form
         comboBox.ForeColor = TextPrimary;
         comboBox.Height = 30;
         comboBox.Margin = new Padding(0, 7, 12, 7);
+        comboBox.IntegralHeight = false;
     }
 
     private void ReloadProfiles(string? selectProfileName = null)

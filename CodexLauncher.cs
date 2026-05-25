@@ -56,7 +56,7 @@ internal sealed class CodexLauncher
         }
 
         var result = MessageBox.Show(
-            "Codex is already running. Restart it now so provider and model changes are loaded?",
+            "Codex is already running. Restart it now so provider and model changes reload? Choose No to keep the current app open and open the workspace anyway.",
             "Codex Profile Tray",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question);
