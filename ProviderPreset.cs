@@ -19,19 +19,7 @@ internal sealed class ProviderPreset
     {
         new ProviderPreset
         {
-            DisplayName = "DeepSeek",
-            ProviderId = "deepseek",
-            ProviderName = "DeepSeek",
-            BaseUrl = "https://api.deepseek.com",
-            EnvKey = "DEEPSEEK_API_KEY",
-            Models = new[] { "deepseek-v4-pro", "deepseek-v4-flash" },
-            ContextWindow = 1_000_000,
-            ReasoningEffort = "high",
-            SupportsReasoningSummaries = false
-        },
-        new ProviderPreset
-        {
-            DisplayName = "Custom OpenAI-compatible API",
+            DisplayName = "OpenAI-compatible API",
             ProviderId = "custom",
             ProviderName = "Custom Provider",
             BaseUrl = "https://api.example.com/v1",

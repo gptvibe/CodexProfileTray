@@ -35,8 +35,8 @@ internal sealed class ProfileManagerForm : Form
         _configManager = configManager;
         Text = "Codex Profile Tray";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(980, 680);
-        Size = new Size(1040, 720);
+        MinimumSize = new Size(1120, 720);
+        Size = new Size(1160, 760);
         BackColor = Page;
         Font = new Font("Segoe UI", 9.5F);
         Icon = AppIcons.GetAppIcon();
@@ -54,7 +54,7 @@ internal sealed class ProfileManagerForm : Form
             RowCount = 1,
             BackColor = Page
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 286));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
@@ -80,17 +80,17 @@ internal sealed class ProfileManagerForm : Form
 
         var title = new Label
         {
-            Text = "Codex Profiles",
+            Text = "Profiles",
             Dock = DockStyle.Fill,
             ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 18F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
             TextAlign = ContentAlignment.BottomLeft
         };
         sidebar.Controls.Add(title, 0, 0);
 
         var hint = new Label
         {
-            Text = "Providers and model profiles",
+            Text = "OpenAI-compatible configs",
             Dock = DockStyle.Fill,
             ForeColor = SidebarMuted,
             TextAlign = ContentAlignment.TopLeft
@@ -101,7 +101,7 @@ internal sealed class ProfileManagerForm : Form
         _profilesList.BorderStyle = BorderStyle.None;
         _profilesList.BackColor = Sidebar;
         _profilesList.ForeColor = Color.White;
-        _profilesList.ItemHeight = 52;
+        _profilesList.ItemHeight = 64;
         _profilesList.IntegralHeight = false;
         _profilesList.DrawMode = DrawMode.OwnerDrawFixed;
         _profilesList.SelectedIndexChanged += (_, _) => LoadSelectedProfile();
@@ -129,7 +129,7 @@ internal sealed class ProfileManagerForm : Form
             ColumnCount = 3,
             BackColor = Page
         };
-        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         editor.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         editor.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
 
@@ -148,10 +148,10 @@ internal sealed class ProfileManagerForm : Form
 
         var header = new Label
         {
-            Text = "Set Up A Provider",
+            Text = "Set Up Provider",
             Dock = DockStyle.Fill,
             ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 20F, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft
         };
         editor.Controls.Add(header, 0, 0);
@@ -161,18 +161,18 @@ internal sealed class ProfileManagerForm : Form
         _presetBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _presetBox.Items.AddRange(ProviderPreset.All.Cast<object>().ToArray());
         _presetBox.SelectedIndexChanged += (_, _) => ApplySelectedPreset();
-        AddLabeledControl(editor, "Provider", _presetBox, 1);
+        AddLabeledControl(editor, "Provider type", _presetBox, 1, columnSpan: 2);
 
         StyleTextBox(_providerNameBox);
-        _providerNameBox.PlaceholderText = "DeepSeek, OpenRouter, LocalAI, etc.";
-        AddLabeledControl(editor, "Display name", _providerNameBox, 2);
+        _providerNameBox.PlaceholderText = "Provider display name";
+        AddLabeledControl(editor, "Display name", _providerNameBox, 2, columnSpan: 2);
 
         StyleTextBox(_baseUrlBox);
         _baseUrlBox.PlaceholderText = "https://api.example.com/v1";
-        AddLabeledControl(editor, "Base URL", _baseUrlBox, 3);
+        AddLabeledControl(editor, "Base URL", _baseUrlBox, 3, columnSpan: 2);
 
         StyleTextBox(_apiKeyBox);
-        _apiKeyBox.PlaceholderText = "Paste API key here to save or fetch models";
+        _apiKeyBox.PlaceholderText = "Paste API key";
         _apiKeyBox.UseSystemPasswordChar = true;
         AddLabeledControl(editor, "API key", _apiKeyBox, 4);
 
@@ -183,10 +183,10 @@ internal sealed class ProfileManagerForm : Form
         StyleTextBox(_modelsBox);
         _modelsBox.Multiline = true;
         _modelsBox.ScrollBars = ScrollBars.Vertical;
-        _modelsBox.PlaceholderText = "One model per line. DeepSeek fills this automatically.";
-        AddLabeledControl(editor, "Models to add", _modelsBox, 5);
+        _modelsBox.PlaceholderText = "One model id per line, or fetch from the provider";
+        AddLabeledControl(editor, "Models", _modelsBox, 5);
 
-        var fetchButton = CreateButton("Fetch models", accent: false);
+        var fetchButton = CreateButton("Fetch", accent: false);
         fetchButton.Click += async (_, _) => await FetchModelsAsync();
         editor.Controls.Add(fetchButton, 2, 5);
 
@@ -202,7 +202,7 @@ internal sealed class ProfileManagerForm : Form
         _contextEnabledBox.AutoSize = true;
         _contextEnabledBox.ForeColor = TextPrimary;
         _contextEnabledBox.CheckedChanged += (_, _) => _contextWindowBox.Enabled = _contextEnabledBox.Checked;
-        _contextWindowBox.Width = 160;
+        _contextWindowBox.Width = 190;
         _contextWindowBox.Minimum = 1;
         _contextWindowBox.Maximum = 100_000_000;
         _contextWindowBox.Increment = 1000;
@@ -210,19 +210,19 @@ internal sealed class ProfileManagerForm : Form
         _contextWindowBox.Enabled = false;
         contextPanel.Controls.Add(_contextEnabledBox);
         contextPanel.Controls.Add(_contextWindowBox);
-        AddLabeledControl(editor, "Context", contextPanel, 6);
+        AddLabeledControl(editor, "Context", contextPanel, 6, columnSpan: 2);
 
         StyleCombo(_reasoningEffortBox);
         _reasoningEffortBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _reasoningEffortBox.Items.AddRange(new object[] { "Auto", "none", "minimal", "low", "medium", "high", "xhigh" });
         _reasoningEffortBox.SelectedIndex = 0;
-        AddLabeledControl(editor, "Reasoning effort", _reasoningEffortBox, 7);
+        AddLabeledControl(editor, "Reasoning effort", _reasoningEffortBox, 7, columnSpan: 2);
 
         StyleCombo(_reasoningSummariesBox);
         _reasoningSummariesBox.DropDownStyle = ComboBoxStyle.DropDownList;
         _reasoningSummariesBox.Items.AddRange(new object[] { "Auto", "Yes", "No" });
         _reasoningSummariesBox.SelectedIndex = 0;
-        AddLabeledControl(editor, "Reasoning summaries", _reasoningSummariesBox, 8);
+        AddLabeledControl(editor, "Summaries", _reasoningSummariesBox, 8, columnSpan: 2);
 
         _secretStatusLabel.Dock = DockStyle.Fill;
         _secretStatusLabel.ForeColor = TextMuted;
@@ -272,13 +272,13 @@ internal sealed class ProfileManagerForm : Form
             return;
         }
 
-        var titleRect = new Rectangle(bounds.Left + 12, bounds.Top + 8, bounds.Width - 24, 20);
-        var subtitleRect = new Rectangle(bounds.Left + 12, bounds.Top + 29, bounds.Width - 24, 18);
+        var titleRect = new Rectangle(bounds.Left + 12, bounds.Top + 11, bounds.Width - 24, 23);
+        var subtitleRect = new Rectangle(bounds.Left + 12, bounds.Top + 36, bounds.Width - 24, 20);
         TextRenderer.DrawText(e.Graphics, profile.ProfileName, new Font(Font, FontStyle.Bold), titleRect, Color.White, TextFormatFlags.EndEllipsis);
         TextRenderer.DrawText(e.Graphics, profile.Model ?? profile.ProviderName ?? profile.ProviderId, Font, subtitleRect, SidebarMuted, TextFormatFlags.EndEllipsis);
     }
 
-    private static void AddLabeledControl(TableLayoutPanel panel, string labelText, Control control, int row)
+    private static void AddLabeledControl(TableLayoutPanel panel, string labelText, Control control, int row, int columnSpan = 1)
     {
         var label = new Label
         {
@@ -291,6 +291,7 @@ internal sealed class ProfileManagerForm : Form
 
         control.Dock = DockStyle.Fill;
         panel.Controls.Add(control, 1, row);
+        panel.SetColumnSpan(control, columnSpan);
     }
 
     private static Button CreateButton(string text, bool accent)
@@ -357,7 +358,7 @@ internal sealed class ProfileManagerForm : Form
         _presetBox.SelectedIndex = 0;
         _isLoading = false;
         ApplySelectedPreset();
-        _statusLabel.Text = "Choose DeepSeek for the two built-in DeepSeek model profiles, or choose Custom for any OpenAI-compatible API.";
+        _statusLabel.Text = "Enter any provider that exposes an OpenAI-compatible API URL.";
     }
 
     private void ApplySelectedPreset()
@@ -383,9 +384,7 @@ internal sealed class ProfileManagerForm : Form
             : WindowsCredentialStore.HasSecret(preset.ProviderId)
                 ? "A key is already saved for this provider."
                 : "Paste your API key once. It will be saved in Windows Credential Manager.";
-        _statusLabel.Text = preset.DisplayName == "DeepSeek"
-            ? "DeepSeek setup will create both deepseek-v4-pro and deepseek-v4-flash profiles."
-            : "Custom providers can use typed model ids or fetched /models results.";
+        _statusLabel.Text = "Type model ids manually or fetch them from the provider's /models endpoint.";
     }
 
     private void LoadSelectedProfile()
@@ -642,19 +641,6 @@ internal sealed class ProfileManagerForm : Form
         if (!string.IsNullOrWhiteSpace(selected) && selected != "Auto")
         {
             return selected;
-        }
-
-        if (providerId.Equals("deepseek", StringComparison.OrdinalIgnoreCase))
-        {
-            if (model.Contains("flash", StringComparison.OrdinalIgnoreCase))
-            {
-                return "low";
-            }
-
-            if (model.Contains("pro", StringComparison.OrdinalIgnoreCase))
-            {
-                return "high";
-            }
         }
 
         return preset?.ReasoningEffort;
