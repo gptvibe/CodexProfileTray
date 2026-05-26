@@ -10,6 +10,7 @@ The goal is simple: no command line, no hand-editing TOML, and no API keys commi
 - Opens the normal Codex Windows app and lets Codex handle model changes
 - Creates Codex provider/profile config for you
 - Adds saved provider models to the Codex app model picker
+- Keeps Codex's active provider matched to the model picked in the app
 - Works with OpenAI-compatible API URLs
 - Bridges Codex's Responses API calls to provider `/chat/completions` APIs when needed
 - Lets you type model IDs manually
@@ -86,6 +87,8 @@ http://127.0.0.1:17345
 Codex sends `/responses` requests to that local address. The tray app then sends the real request to the provider's `/chat/completions` endpoint using the API key saved in Windows Credential Manager.
 
 This is why the tray app should stay open while you use a non-OpenAI provider. If you see an error ending in `/responses`, install the latest release and launch Codex from the tray again so your profile is migrated automatically.
+
+The tray also watches Codex config while it is running. If you choose a saved provider model in the Codex app picker, the tray updates `model_provider` to match that model so the next thread routes to the right API.
 
 ## Model Fetching
 

@@ -183,6 +183,34 @@ internal sealed class CodexConfigManager
         WriteConfigIfChanged(lines);
     }
 
+    public bool ReconcileActiveModelProvider()
+    {
+        if (!File.Exists(ConfigPath))
+        {
+            return false;
+        }
+
+        var originalLines = File.ReadAllLines(ConfigPath).ToList();
+        var lines = originalLines.ToList();
+        var model = GetTopLevelValue(lines, "model");
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return false;
+        }
+
+        var currentProvider = GetTopLevelValue(lines, "model_provider") ?? "openai";
+        var targetProvider = ResolveProviderForModel(model, currentProvider);
+        if (string.IsNullOrWhiteSpace(targetProvider) ||
+            targetProvider.Equals(currentProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        SetTopLevelValue(lines, "model_provider", targetProvider);
+        WriteConfigIfChanged(originalLines, lines);
+        return true;
+    }
+
     public void SetActiveProfile(CodexProfile profile)
     {
         if (string.IsNullOrWhiteSpace(profile.Model))
@@ -723,6 +751,48 @@ internal sealed class CodexConfigManager
         return null;
     }
 
+    private string? ResolveProviderForModel(string model, string currentProvider)
+    {
+        var candidates = GetKnownProvidersForModel(model).ToList();
+        if (candidates.Contains(currentProvider, StringComparer.OrdinalIgnoreCase))
+        {
+            return currentProvider;
+        }
+
+        if (candidates.Count > 0)
+        {
+            return candidates
+                .OrderBy(provider => ProviderProxyServer.ShouldProxyProvider(provider) ? 0 : 1)
+                .ThenBy(provider => provider.Equals("openai", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(provider => provider, StringComparer.OrdinalIgnoreCase)
+                .First();
+        }
+
+        return ProviderProxyServer.ShouldProxyProvider(currentProvider)
+            ? "openai"
+            : null;
+    }
+
+    private IEnumerable<string> GetKnownProvidersForModel(string model)
+    {
+        foreach (var profile in LoadProfiles())
+        {
+            if (!string.IsNullOrWhiteSpace(profile.Model) &&
+                profile.Model.Equals(model, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return profile.ProviderId;
+            }
+        }
+
+        foreach (var settings in _providerSettingsStore.LoadAll())
+        {
+            if (settings.Models.Any(item => item.Equals(model, StringComparison.OrdinalIgnoreCase)))
+            {
+                yield return settings.ProviderId;
+            }
+        }
+    }
+
     private void BackupConfigIfExists()
     {
         if (!File.Exists(ConfigPath))
@@ -752,6 +822,53 @@ internal sealed class CodexConfigManager
         BackupConfigIfExists();
         Directory.CreateDirectory(CodexHome);
         File.WriteAllLines(ConfigPath, lines, new UTF8Encoding(false));
+    }
+
+    private static string? GetTopLevelValue(List<string> lines, string key)
+    {
+        foreach (var line in lines)
+        {
+            if (SectionRegex.IsMatch(line))
+            {
+                return null;
+            }
+
+            var match = KeyValueRegex.Match(line);
+            if (match.Success &&
+                match.Groups["key"].Value.Equals(key, StringComparison.OrdinalIgnoreCase))
+            {
+                return ParseTomlValue(match.Groups["value"].Value);
+            }
+        }
+
+        return null;
+    }
+
+    private static void SetTopLevelValue(List<string> lines, string key, string value)
+    {
+        for (var index = 0; index < lines.Count; index++)
+        {
+            if (SectionRegex.IsMatch(lines[index]))
+            {
+                break;
+            }
+
+            var match = KeyValueRegex.Match(lines[index]);
+            if (match.Success &&
+                match.Groups["key"].Value.Equals(key, StringComparison.OrdinalIgnoreCase))
+            {
+                lines[index] = $"{key} = {QuoteTomlString(value)}";
+                return;
+            }
+        }
+
+        var insertAt = 0;
+        while (insertAt < lines.Count && !SectionRegex.IsMatch(lines[insertAt]))
+        {
+            insertAt++;
+        }
+
+        lines.Insert(insertAt, $"{key} = {QuoteTomlString(value)}");
     }
 
     private static void InsertTopLevelBlock(List<string> lines, IReadOnlyList<string> block)

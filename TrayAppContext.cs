@@ -9,6 +9,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly ToolStripMenuItem _providerMenu = new("Open Codex With Provider");
     private readonly CodexLauncher _launcher;
     private readonly ProviderProxyServer _proxyServer;
+    private readonly CodexConfigReconciler _configReconciler;
     private readonly Icon _appIcon;
     private string? _proxyStartError;
 
@@ -17,6 +18,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _configManager = new CodexConfigManager(_providerSettingsStore);
         _launcher = new CodexLauncher(_configManager);
         _proxyServer = new ProviderProxyServer(_providerSettingsStore);
+        _configReconciler = new CodexConfigReconciler(_configManager);
         try
         {
             _proxyServer.Start();
@@ -24,6 +26,15 @@ internal sealed class TrayAppContext : ApplicationContext
         catch (Exception ex)
         {
             _proxyStartError = ex.Message;
+        }
+
+        try
+        {
+            _configReconciler.Start();
+        }
+        catch
+        {
+            // The tray can still launch Codex if the config watcher is unavailable.
         }
 
         _appIcon = AppIcons.GetAppIcon();
@@ -44,6 +55,7 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _configReconciler.Dispose();
             _proxyServer.Dispose();
             _appIcon.Dispose();
         }
