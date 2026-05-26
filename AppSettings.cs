@@ -12,6 +12,7 @@ internal sealed class AppSettings
     };
 
     public string? LastWorkspace { get; set; }
+    public string? LastProfile { get; set; }
 
     private static string SettingsDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CodexProfileTray");

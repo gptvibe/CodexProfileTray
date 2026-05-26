@@ -6,6 +6,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly CodexConfigManager _configManager;
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly NotifyIcon _notifyIcon;
+    private readonly ToolStripMenuItem _providerMenu = new("Open Codex With Provider");
     private readonly CodexLauncher _launcher;
     private readonly ProviderProxyServer _proxyServer;
     private readonly Icon _appIcon;
@@ -34,6 +35,7 @@ internal sealed class TrayAppContext : ApplicationContext
             ContextMenuStrip = BuildContextMenu()
         };
         _notifyIcon.DoubleClick += (_, _) => LaunchCodex();
+        RefreshProviderMenu();
     }
 
     protected override void Dispose(bool disposing)
@@ -52,6 +54,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private ContextMenuStrip BuildContextMenu()
     {
         var menu = new ContextMenuStrip();
+        menu.Opening += (_, _) => RefreshProviderMenu();
 
         var openCodex = new ToolStripMenuItem("Open Codex", null, (_, _) => LaunchCodex());
         var manageProfiles = new ToolStripMenuItem("Manage Providers...", null, (_, _) => ShowProfileManager());
@@ -60,6 +63,7 @@ internal sealed class TrayAppContext : ApplicationContext
         var exit = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());
 
         menu.Items.Add(openCodex);
+        menu.Items.Add(_providerMenu);
         menu.Items.Add(manageProfiles);
         menu.Items.Add(chooseFolder);
         menu.Items.Add(new ToolStripSeparator());
@@ -73,6 +77,78 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         using var form = new ProfileManagerForm(_configManager);
         form.ShowDialog();
+        RefreshProviderMenu();
+    }
+
+    private void RefreshProviderMenu()
+    {
+        _providerMenu.DropDownItems.Clear();
+
+        IReadOnlyList<CodexProfile> profiles;
+        try
+        {
+            profiles = _configManager.LoadProfiles();
+        }
+        catch (Exception ex)
+        {
+            _providerMenu.DropDownItems.Add(new ToolStripMenuItem("Could not read providers") { Enabled = false });
+            _providerMenu.DropDownItems.Add(new ToolStripMenuItem(ex.Message) { Enabled = false });
+            return;
+        }
+
+        if (profiles.Count == 0)
+        {
+            _providerMenu.DropDownItems.Add(new ToolStripMenuItem("No saved providers") { Enabled = false });
+            return;
+        }
+
+        foreach (var providerGroup in profiles
+                     .GroupBy(profile => profile.ProviderId, StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(group => group.First().ProviderName ?? group.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            AddProviderMenuItems(providerGroup.ToList());
+        }
+    }
+
+    private void AddProviderMenuItems(IReadOnlyList<CodexProfile> profiles)
+    {
+        var providerName = profiles[0].ProviderName ?? profiles[0].ProviderId;
+        if (profiles.Count == 1)
+        {
+            _providerMenu.DropDownItems.Add(CreateProfileMenuItem(profiles[0], providerName));
+            return;
+        }
+
+        var providerItem = new ToolStripMenuItem(providerName);
+        foreach (var profile in profiles.OrderBy(profile => profile.Model ?? profile.ProfileName, StringComparer.OrdinalIgnoreCase))
+        {
+            providerItem.DropDownItems.Add(CreateProfileMenuItem(profile, FormatModel(profile)));
+        }
+
+        _providerMenu.DropDownItems.Add(providerItem);
+    }
+
+    private ToolStripMenuItem CreateProfileMenuItem(CodexProfile profile, string text)
+    {
+        var item = new ToolStripMenuItem(text)
+        {
+            Checked = !string.IsNullOrWhiteSpace(_settings.LastProfile) &&
+                      _settings.LastProfile.Equals(profile.ProfileName, StringComparison.OrdinalIgnoreCase)
+        };
+        item.Click += (_, _) => LaunchCodex(profile);
+        return item;
+    }
+
+    private static string FormatModel(CodexProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile.Model))
+        {
+            return profile.ProfileName;
+        }
+
+        return string.IsNullOrWhiteSpace(profile.ReasoningEffort)
+            ? profile.Model
+            : $"{profile.Model} ({profile.ReasoningEffort})";
     }
 
     private void ChooseWorkspace()
@@ -119,6 +195,32 @@ internal sealed class TrayAppContext : ApplicationContext
 
             _launcher.Launch(_settings.LastWorkspace);
             _settings.Save();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Codex Profile Tray", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void LaunchCodex(CodexProfile profile)
+    {
+        try
+        {
+            EnsureWorkspaceSelected();
+            if (string.IsNullOrWhiteSpace(_settings.LastWorkspace))
+            {
+                return;
+            }
+
+            if (ProviderProxyServer.ShouldProxyProvider(profile.ProviderId) && !_proxyServer.IsRunning)
+            {
+                throw new InvalidOperationException($"The local compatibility proxy is not running. {_proxyStartError ?? "Exit and reopen Codex Profile Tray, then try again."}");
+            }
+
+            _launcher.Launch(profile, _settings.LastWorkspace);
+            _settings.LastProfile = profile.ProfileName;
+            _settings.Save();
+            RefreshProviderMenu();
         }
         catch (Exception ex)
         {

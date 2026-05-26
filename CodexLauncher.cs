@@ -14,15 +14,41 @@ internal sealed class CodexLauncher
 
     public void Launch(string workspace)
     {
+        ValidateWorkspace(workspace);
+
+        _configManager.EnsureProviderCompatibility();
+        _configManager.EnsureAppModelCatalog();
+        RestartCodexIfNeeded("provider and model changes reload");
+
+        StartCodex(workspace);
+    }
+
+    public void Launch(CodexProfile profile, string workspace)
+    {
+        ValidateWorkspace(workspace);
+
+        _configManager.EnsureProviderCompatibility(profile);
+        profile = _configManager.LoadProfiles()
+            .FirstOrDefault(item => item.ProfileName.Equals(profile.ProfileName, StringComparison.OrdinalIgnoreCase))
+            ?? profile;
+
+        _configManager.EnsureAppModelCatalog();
+        _configManager.SetActiveProfile(profile);
+        RestartCodexIfNeeded($"'{FormatProfile(profile)}' becomes active");
+
+        StartCodex(workspace);
+    }
+
+    private static void ValidateWorkspace(string workspace)
+    {
         if (string.IsNullOrWhiteSpace(workspace) || !Directory.Exists(workspace))
         {
             throw new InvalidOperationException("Choose an existing project folder first.");
         }
+    }
 
-        _configManager.EnsureProviderCompatibility();
-        _configManager.EnsureAppModelCatalog();
-        RestartCodexIfNeeded();
-
+    private void StartCodex(string workspace)
+    {
         var target = CodexExecutableLocator.Resolve();
         var startInfo = new ProcessStartInfo
         {
@@ -44,7 +70,7 @@ internal sealed class CodexLauncher
         Process.Start(startInfo);
     }
 
-    private static void RestartCodexIfNeeded()
+    private static void RestartCodexIfNeeded(string reason)
     {
         var runningCodex = Process.GetProcessesByName("Codex")
             .Where(IsDesktopCodexProcess)
@@ -56,7 +82,7 @@ internal sealed class CodexLauncher
         }
 
         var result = MessageBox.Show(
-            "Codex is already running. Restart it now so provider and model changes reload? Choose No to keep the current app open and open the workspace anyway.",
+            $"Codex is already running. Restart it now so {reason}? Choose No to keep the current app open and open the workspace anyway.",
             "Codex Profile Tray",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question);
@@ -125,6 +151,16 @@ internal sealed class CodexLauncher
         {
             MakeApiKeyAvailable(profile, startInfo);
         }
+    }
+
+    private static string FormatProfile(CodexProfile profile)
+    {
+        if (string.IsNullOrWhiteSpace(profile.Model))
+        {
+            return profile.ProviderName ?? profile.ProviderId;
+        }
+
+        return $"{profile.ProviderName ?? profile.ProviderId} / {profile.Model}";
     }
 
     private static void MakeApiKeyAvailable(CodexProfile profile, ProcessStartInfo startInfo)
